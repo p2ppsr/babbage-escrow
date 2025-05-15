@@ -1,11 +1,6 @@
-## Meter for the New World
-If you have problems accessing hosts:
-`broadcasterResult.description: All local topical hosts have rejected the transaction.`
+## Babbage Escrow Library
 
-Try using your browser with a command switch. Ensure you use a temporary profile if you do disable your security settings.
-
-For Linux:
-`brave-browser --disable-web-security --user-data-dir="/tmp/brave_dev"`
+(early stage)
 
 # BSV Project
 
