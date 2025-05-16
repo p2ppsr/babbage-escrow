@@ -1,0 +1,443 @@
+
+struct Bid {
+  PubKey furnisherKey;
+  bytes plans;
+  int bidAmount;
+  int bond;
+  int timeOfBid;
+  int timeRequired;
+}
+
+contract EscrowContract {
+  @state int minAllowableBid;
+  @state int maxAllowedBids;
+  @state int escrowServicePercent;
+  @state int platformAuthorizationRequired;
+  @state int escrowMustBeFullyDecisive;
+  @state int bountySolversNeedApproval;
+  @state int furnisherBondingMode;
+  @state int requiredBondAmount;
+  @state int maxWorkStartDelay;
+  @state int maxWorkApprovalDelay;
+  @state int delayUnit;
+  @state int workCompletionDeadline;
+  @state int approvalMode;
+  @state int contractType;
+  @state int bountyIncreaseAllowanceMode;
+  @state int bountyIncreaseCutoffPoint;
+  @state HashedSet<Bid> bids;
+  VarIntReader __scrypt_ts_accessPathReaderForProp__bids;
+  @state PubKey seekerKey;
+  @state PubKey platformKey;
+  @state Bid acceptedBid;
+  @state int bidAcceptedBy;
+  @state int workCompletionTime;
+  @state int status;
+  @state bytes workDescription;
+  @state bytes workCompletionDescription;
+  bytes __scrypt_ts_ctx_hashoutputs;
+  int __scrypt_ts_ctx_locktime;
+  int __scrypt_ts_ctx_sequence;
+  int __scrypt_ts_ctx_value;
+  constructor(PubKey seekerKey, PubKey platformKey, int escrowServicePercent, int platformAuthorizationRequired, bytes workDescription, int workCompletionDeadline, int minAllowableBid, int maxAllowedBids, int bountySolversNeedApproval, int escrowMustBeFullyDecisive, int furnisherBondingMode, int requiredBondAmount, int maxWorkStartDelay, int maxWorkApprovalDelay, int delayUnit, int approvalMode, int bountyIncreaseAllowanceMode, int bountyIncreaseCutoffPoint, int contractType, HashedSet<Bid> bids) {
+    this.seekerKey = seekerKey;
+    this.platformKey = platformKey;
+    this.escrowServicePercent = escrowServicePercent;
+    this.platformAuthorizationRequired = platformAuthorizationRequired;
+    this.workDescription = workDescription;
+    this.workCompletionDeadline = workCompletionDeadline;
+    this.minAllowableBid = minAllowableBid;
+    this.maxAllowedBids = maxAllowedBids;
+    this.bountySolversNeedApproval = bountySolversNeedApproval;
+    this.escrowMustBeFullyDecisive = escrowMustBeFullyDecisive;
+    this.furnisherBondingMode = furnisherBondingMode;
+    this.requiredBondAmount = requiredBondAmount;
+    this.maxWorkStartDelay = maxWorkStartDelay;
+    this.maxWorkApprovalDelay = maxWorkApprovalDelay;
+    this.delayUnit = delayUnit;
+    this.approvalMode = approvalMode;
+    this.contractType = contractType;
+    this.bountyIncreaseAllowanceMode = bountyIncreaseAllowanceMode;
+    this.bountyIncreaseCutoffPoint = bountyIncreaseCutoffPoint;
+    this.status = 11;
+    this.bids = bids;
+    this.bidAcceptedBy = 81;
+    this.acceptedBid = {seekerKey, b'', 0, 0, 0, 0};
+    this.workCompletionTime = 0;
+    this.workCompletionDescription = b'';
+  }
+  public function seekerCancelsBeforeAccept(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 11);
+    require(checkSig(seekerSig, this.seekerKey));
+  }
+  public function anyoneIncreasesBounty(int amount, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(amount > 0);
+    require(this.contractType == 1);
+    require(this.bountyIncreaseAllowanceMode == 65);
+    if(this.bountyIncreaseCutoffPoint == 71) {
+        require(this.status == 11);
+      } else if(this.bountyIncreaseCutoffPoint == 72) {
+        require(this.status == 11 || this.status == 12);
+      } else if(this.bountyIncreaseCutoffPoint == 73) {
+        require(this.status == 11 || this.status == 12 || this.status == 13);
+      } else if(this.bountyIncreaseCutoffPoint == 74) {
+        require(this.status == 11 || this.status == 12 || this.status == 13 || this.status == 14);
+      }
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + amount)));
+  }
+  public function seekerIncreasesBounty(Sig seekerSig, int amount, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(amount > 0);
+    require(this.contractType == 1);
+    require(this.bountyIncreaseAllowanceMode == 65 || this.bountyIncreaseAllowanceMode == 62 || this.bountyIncreaseAllowanceMode == 64);
+    if(this.bountyIncreaseCutoffPoint == 71) {
+        require(this.status == 11);
+      } else if(this.bountyIncreaseCutoffPoint == 72) {
+        require(this.status == 11 || this.status == 12);
+      } else if(this.bountyIncreaseCutoffPoint == 73) {
+        require(this.status == 11 || this.status == 12 || this.status == 13);
+      } else if(this.bountyIncreaseCutoffPoint == 74) {
+        require(this.status == 11 || this.status == 12 || this.status == 13 || this.status == 14);
+      }
+    require(checkSig(seekerSig, this.seekerKey));
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + amount)));
+  }
+  public function platformIncreasesBounty(Sig platformSig, int amount, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(amount > 0);
+    require(this.contractType == 1);
+    require(this.bountyIncreaseAllowanceMode == 65 || this.bountyIncreaseAllowanceMode == 63 || this.bountyIncreaseAllowanceMode == 64);
+    if(this.bountyIncreaseCutoffPoint == 71) {
+        require(this.status == 11);
+      } else if(this.bountyIncreaseCutoffPoint == 72) {
+        require(this.status == 11 || this.status == 12);
+      } else if(this.bountyIncreaseCutoffPoint == 73) {
+        require(this.status == 11 || this.status == 12 || this.status == 13);
+      } else if(this.bountyIncreaseCutoffPoint == 74) {
+        require(this.status == 11 || this.status == 12 || this.status == 13 || this.status == 14);
+      }
+    require(checkSig(platformSig, this.platformKey));
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + amount)));
+  }
+  public function seekerExtendsWorkDeadline(Sig seekerSig, int extension, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(extension > 0);
+    if(this.delayUnit == 51) {
+        require(this.workCompletionDeadline + extension < 500000000);
+      } else {
+        require(this.workCompletionDeadline + extension > 500000000);
+      }
+    require(this.status == 11 || this.status == 12 || this.status == 13);
+    this.workCompletionDeadline += extension;
+    require(checkSig(seekerSig, this.seekerKey));
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+  }
+  public function furnisherPlacesBid(Sig furnisherSig, Bid bid, SigHashPreimage __scrypt_ts_txPreimage, bytes __scrypt_ts_accessPathForProp__bids) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_accessPathReaderForProp__bids = new VarIntReader(__scrypt_ts_accessPathForProp__bids);
+    require(this.status == 11);
+    require(this.bountySolversNeedApproval == 1);
+    require(checkSig(furnisherSig, bid.furnisherKey));
+    if(this.contractType == 1) {
+        require(bid.bidAmount == this.__scrypt_ts_ctx_value);
+      } else {
+        require(bid.bidAmount >= this.minAllowableBid);
+      }
+    if(this.furnisherBondingMode == 31) {
+        require(bid.bond == 0);
+      } else if(this.furnisherBondingMode == 32) {
+        require(bid.bond >= 0);
+      } else {
+        require(bid.bond == this.requiredBondAmount);
+        require(bid.bond >= 0);
+      }
+    if(this.contractType == 2) {
+        require(this.__scrypt_ts_ctx_value == 1);
+      }
+    require(bid.timeRequired > 0);
+    require(bid.timeOfBid > 0);
+    if(this.delayUnit == 51) {
+        require(bid.timeRequired < 500000000);
+        require(bid.timeOfBid < 500000000);
+      } else {
+        require(bid.timeRequired > 500000000);
+        require(bid.timeOfBid > 500000000);
+      }
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    require(this.__scrypt_ts_ctx_locktime >= bid.timeOfBid);
+    require(this.bids.size() + 1 <= this.maxAllowedBids);
+    require(this.bids.add({bid, this.__scrypt_ts_accessPathReaderForProp__bids.readInt()}));
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+  }
+  public function seekerAcceptsBid(Sig seekerSig, Bid bid, SigHashPreimage __scrypt_ts_txPreimage, bytes __scrypt_ts_accessPathForProp__bids) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_accessPathReaderForProp__bids = new VarIntReader(__scrypt_ts_accessPathForProp__bids);
+    require(this.status == 11);
+    require(this.bountySolversNeedApproval == 1);
+    require(this.approvalMode == 41 || this.approvalMode == 42);
+    require(checkSig(seekerSig, this.seekerKey));
+    require(this.bids.has({bid, this.__scrypt_ts_accessPathReaderForProp__bids.readInt()}));
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    require(this.__scrypt_ts_ctx_locktime < this.workCompletionDeadline - bid.timeRequired);
+    this.status = 12;
+    this.acceptedBid = bid;
+    this.bidAcceptedBy = 82;
+    if(this.contractType == 2) {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(bid.bidAmount)));
+      } else {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+      }
+    require(true);
+  }
+  public function platformAcceptsBid(Sig platformSig, Bid bid, SigHashPreimage __scrypt_ts_txPreimage, bytes __scrypt_ts_accessPathForProp__bids) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_accessPathReaderForProp__bids = new VarIntReader(__scrypt_ts_accessPathForProp__bids);
+    require(this.status == 11);
+    require(this.bountySolversNeedApproval == 1);
+    require(this.approvalMode == 43 || this.approvalMode == 42);
+    require(checkSig(platformSig, this.platformKey));
+    require(this.bids.has({bid, this.__scrypt_ts_accessPathReaderForProp__bids.readInt()}));
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    require(this.__scrypt_ts_ctx_locktime < this.workCompletionDeadline - bid.timeRequired);
+    this.status = 12;
+    this.acceptedBid = bid;
+    this.bidAcceptedBy = 82;
+    if(this.contractType == 2) {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(bid.bidAmount)));
+      } else {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+      }
+    require(true);
+  }
+  public function seekerWithdrawsBidAcceptance(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 12);
+    require(checkSig(seekerSig, this.seekerKey));
+    if(this.delayUnit == 51) {
+        require((this.acceptedBid).timeOfBid + this.maxWorkStartDelay < 500000000);
+      } else {
+        require((this.acceptedBid).timeOfBid + this.maxWorkStartDelay > 500000000);
+      }
+    require(this.bountySolversNeedApproval == 1);
+    require(this.approvalMode == 41 || this.approvalMode == 42);
+    require(this.bidAcceptedBy == 82);
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    require(this.__scrypt_ts_ctx_locktime > (this.acceptedBid).timeOfBid + this.maxWorkStartDelay);
+    this.status = 11;
+    this.acceptedBid = {this.seekerKey, b'', 0, 0, 0, 0};
+    this.bidAcceptedBy = 81;
+    if(this.contractType == 2) {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(1)));
+      } else {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+      }
+    require(true);
+  }
+  public function platformWithdrawsBidAcceptance(Sig platformSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 12);
+    require(checkSig(platformSig, this.platformKey));
+    if(this.delayUnit == 51) {
+        require((this.acceptedBid).timeOfBid + this.maxWorkStartDelay < 500000000);
+      } else {
+        require((this.acceptedBid).timeOfBid + this.maxWorkStartDelay > 500000000);
+      }
+    require(this.bountySolversNeedApproval == 1);
+    require(this.approvalMode == 43 || this.approvalMode == 42);
+    require(this.bidAcceptedBy == 82);
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    require(this.__scrypt_ts_ctx_locktime > (this.acceptedBid).timeOfBid + this.maxWorkStartDelay);
+    this.status = 11;
+    this.acceptedBid = {this.seekerKey, b'', 0, 0, 0, 0};
+    this.bidAcceptedBy = 81;
+    if(this.contractType == 2) {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(1)));
+      } else {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+      }
+    require(true);
+  }
+  public function furnisherStartsWork(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 12);
+    require(this.platformAuthorizationRequired == 0);
+    require(this.bountySolversNeedApproval == 1);
+    require(checkSig(furnisherSig, (this.acceptedBid).furnisherKey));
+    this.status = 13;
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + (this.acceptedBid).bond)));
+  }
+  public function furnisherStartsWorkWithPlatformAuthorization(Sig furnisherSig, Sig platformSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 12);
+    require(this.platformAuthorizationRequired == 1);
+    require(this.bountySolversNeedApproval == 1);
+    require(checkSig(furnisherSig, (this.acceptedBid).furnisherKey));
+    require(checkSig(platformSig, this.platformKey));
+    this.status = 13;
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + (this.acceptedBid).bond)));
+  }
+  public function seekerRaisesDispute(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(checkSig(seekerSig, this.seekerKey));
+    require(this.status == 13 || this.status == 14);
+    if(this.status == 13) {
+        require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+        if(this.delayUnit == 51) {
+          require(this.__scrypt_ts_ctx_locktime < 500000000);
+        } else {
+          require(this.__scrypt_ts_ctx_locktime > 500000000);
+        }
+        require(this.__scrypt_ts_ctx_locktime > this.workCompletionDeadline);
+      }
+    this.status = 21;
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+  }
+  public function furnisherRaisesDispute(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(checkSig(furnisherSig, (this.acceptedBid).furnisherKey));
+    require(this.status == 14);
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    if(this.delayUnit == 51) {
+        require(this.__scrypt_ts_ctx_locktime < 500000000);
+      } else {
+        require(this.__scrypt_ts_ctx_locktime > 500000000);
+      }
+    require(this.__scrypt_ts_ctx_locktime > (this.workCompletionTime) + this.maxWorkApprovalDelay);
+    this.status = 22;
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+  }
+  public function furnisherSubmitsWork(Sig furnisherSig, bytes workCompletionDescription, Bid adHocBid, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.__scrypt_ts_ctx_sequence == 0xfffffffe);
+    if(this.delayUnit == 51) {
+        require(this.__scrypt_ts_ctx_locktime < 500000000);
+      } else {
+        require(this.__scrypt_ts_ctx_locktime > 500000000);
+      }
+    this.status = 14;
+    this.workCompletionTime = this.__scrypt_ts_ctx_locktime;
+    this.workCompletionDescription = workCompletionDescription;
+    if(this.contractType == 1 && this.bountySolversNeedApproval == 0) {
+        require(this.status == 11);
+        require(checkSig(furnisherSig, adHocBid.furnisherKey));
+        require(adHocBid.bidAmount == this.__scrypt_ts_ctx_value);
+        require(adHocBid.timeOfBid == this.__scrypt_ts_ctx_locktime);
+        require(adHocBid.bond == this.requiredBondAmount);
+        require(adHocBid.timeRequired == 0);
+        this.acceptedBid = adHocBid;
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + this.requiredBondAmount)));
+      } else {
+        require(this.status == 13);
+        require(checkSig(furnisherSig, (this.acceptedBid).furnisherKey));
+        require(this.__scrypt_ts_ctx_locktime > (this.acceptedBid).timeOfBid);
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+      }
+    require(true);
+  }
+  public function seekerApprovesWork(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 14);
+    require(checkSig(seekerSig, this.seekerKey));
+    this.status = 15;
+    require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
+  }
+  public function furnisherClaimsPayment(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 15);
+    require(checkSig(furnisherSig, (this.acceptedBid).furnisherKey));
+  }
+  public function platformResolvesDispute(Sig platformSig, int amountForSeeker, int amountForFurnisher, bytes otherPlatformOutputs, SigHashPreimage __scrypt_ts_txPreimage) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c1')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_sequence = SigHash.nSequence(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_value = SigHash.value(__scrypt_ts_txPreimage);
+    require(this.status == 22 || this.status == 21);
+    require(checkSig(platformSig, this.platformKey));
+    require(amountForSeeker >= 0);
+    require(amountForFurnisher >= 0);
+    if(this.escrowMustBeFullyDecisive == 1) {
+        require(amountForSeeker == 0 || amountForFurnisher == 0);
+      }
+    require(amountForSeeker + amountForFurnisher >= this.__scrypt_ts_ctx_value - (this.__scrypt_ts_ctx_value * (this.escrowServicePercent / 100)));
+    if(amountForSeeker > 0 && amountForFurnisher == 0) {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(Utils.buildOutput(Utils.buildPublicKeyHashScript(hash160(this.seekerKey)), amountForSeeker) + otherPlatformOutputs));
+      } else if(amountForSeeker == 0 && amountForFurnisher > 0) {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(Utils.buildOutput(Utils.buildPublicKeyHashScript(hash160((this.acceptedBid).furnisherKey)), amountForFurnisher) + otherPlatformOutputs));
+      } else {
+        require(this.__scrypt_ts_ctx_hashoutputs == hash256(Utils.buildOutput(Utils.buildPublicKeyHashScript(hash160(this.seekerKey)), amountForSeeker) + Utils.buildOutput(Utils.buildPublicKeyHashScript(hash160((this.acceptedBid).furnisherKey)), amountForFurnisher) + otherPlatformOutputs));
+      }
+    require(true);
+  }
+  function buildStateOutput(int amount) : bytes {  return Utils.buildOutput(this.getStateScript(), amount);}
+}

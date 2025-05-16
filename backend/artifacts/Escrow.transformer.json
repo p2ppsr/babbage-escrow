@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "errors": [],
+  "scryptfile": "Escrow.scrypt",
+  "sourceMapFile": "Escrow.scrypt.map",
+  "ctxMethods": [
+    "anyoneIncreasesBounty",
+    "seekerIncreasesBounty",
+    "platformIncreasesBounty",
+    "seekerExtendsWorkDeadline",
+    "furnisherPlacesBid",
+    "seekerAcceptsBid",
+    "platformAcceptsBid",
+    "seekerWithdrawsBidAcceptance",
+    "platformWithdrawsBidAcceptance",
+    "furnisherStartsWork",
+    "furnisherStartsWorkWithPlatformAuthorization",
+    "seekerRaisesDispute",
+    "furnisherRaisesDispute",
+    "furnisherSubmitsWork",
+    "seekerApprovesWork",
+    "platformResolvesDispute"
+  ]
+}

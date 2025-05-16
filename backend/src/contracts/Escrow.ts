@@ -7,47 +7,13 @@ import {
     SmartContract,
     SigHash,
     PubKey,
-    FixedArray,
     HashedSet,
-    Sig
+    Sig,
+    buildPublicKeyHashScript,
+    Utils,
+    hash160,
+    toByteString
 } from 'scrypt-ts'
-
-/*
-
-export interface EscrowRecord {
-  txid: string
-  outputIndex: number
-  maxAllowedBids: number
-  minBidAmount: number
-  escrowServicePercent: number
-  escrowMustBeFullyDecisive: boolean
-  bountySolversNeedApproval: boolean
-  approvedFurnisherBondMode: 'forbidden' | 'optional' | 'required'
-  requiredFurnisherBondAmount: number
-  maxFurnisherBondPostWorkStartDelay: number
-  maxSeekerPayoutApprovalTime: number
-  maxWorkDeadline: number
-  approvalMode: 'seeker' | 'seeker-or-platform' | 'platform'
-  contractType: 'bid' | 'bounty'
-  bountyAmount?: number
-  bids?: Array<{
-    furnisherKey: string
-    plans: number[]
-    bidAmount: number
-    bond: number
-    time: number
-  }>
-  acceptedBid?: number
-  seekerKey: string
-  platformKey: string
-  furnisherKey?: string
-  workDescriptor: number[]
-  workCompletionDescriotpr: number[]
-  workCompletionTime: number
-  state: 'initial' | 'bid-accepted' | 'active-work' | 'submitted-work' | 'resolved' | 'disputed-by-seeker' | 'disputed-by-furnisher'
-}
-
-*/
 
 export type Bid = {
     furnisherKey: PubKey
@@ -64,13 +30,13 @@ export class EscrowContract extends SmartContract {
     static readonly TYPE_BID: bigint = 2n
 
     // Contract states
-    static readonly STATE_INITIAL: bigint = 11n
-    static readonly STATE_BID_ACCEPTED: bigint = 12n
-    static readonly STATE_WORK_STARTED: bigint = 13n
-    static readonly STATE_WORK_SUBMITTED: bigint = 14n
-    static readonly STATE_RESOLVED: bigint = 15n
-    static readonly STATE_DISPUTED_BY_SEEKER: bigint = 21n
-    static readonly STATE_DISPUTED_BY_FURNISHER: bigint = 22n
+    static readonly STATUS_INITIAL: bigint = 11n
+    static readonly STATUS_BID_ACCEPTED: bigint = 12n
+    static readonly STATUS_WORK_STARTED: bigint = 13n
+    static readonly STATUS_WORK_SUBMITTED: bigint = 14n
+    static readonly STATUS_RESOLVED: bigint = 15n
+    static readonly STATUS_DISPUTED_BY_SEEKER: bigint = 21n
+    static readonly STATUS_DISPUTED_BY_FURNISHER: bigint = 22n
 
     // Furnisher bonding modes
     static readonly FURNISHER_BONDING_MODE_FORBIDDEN: bigint = 31n
@@ -162,22 +128,22 @@ export class EscrowContract extends SmartContract {
     platformKey: PubKey
 
     @prop(true)
-    acceptedBid: Bid | null
+    acceptedBid: Bid
 
     @prop(true)
     bidAcceptedBy: bigint
 
     @prop(true)
-    workCompletionTime: bigint | null
+    workCompletionTime: bigint
 
     @prop(true)
-    state: bigint
+    status: bigint
 
     @prop(true)
     workDescription: ByteString
 
     @prop(true)
-    workCompletionDescription: ByteString | null
+    workCompletionDescription: ByteString
 
     constructor(
         seekerKey: PubKey,
@@ -198,7 +164,8 @@ export class EscrowContract extends SmartContract {
         approvalMode: bigint = EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER,
         bountyIncreaseAllowanceMode: bigint = EscrowContract.BOUNTY_INCREASE_FORBIDDEN,
         bountyIncreaseCutoffPoint: bigint = EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE,
-        contractType: bigint = EscrowContract.TYPE_BID
+        contractType: bigint = EscrowContract.TYPE_BID,
+        bids: HashedSet<Bid> = new HashedSet()
     ) {
         super(...arguments)
 
@@ -228,19 +195,26 @@ export class EscrowContract extends SmartContract {
         this.bountyIncreaseCutoffPoint = bountyIncreaseCutoffPoint // When is the latest point where someone may make the bounty higher?
 
         // State starts at initial, with no bids
-        this.state = EscrowContract.STATE_INITIAL
-        this.bids = new HashedSet()
+        this.status = EscrowContract.STATUS_INITIAL
+        this.bids = bids
 
         // Non-initial values are null
-        this.acceptedBid = null
         this.bidAcceptedBy = EscrowContract.BID_NOT_YET_ACCEPTED
-        this.workCompletionTime = null
-        this.workCompletionDescription = null
+        this.acceptedBid = { // Initially empty / placeholder
+            furnisherKey: seekerKey,
+            bidAmount: 0n,
+            timeOfBid: 0n,
+            bond: 0n,
+            timeRequired: 0n,
+            plans: toByteString('')
+        }
+        this.workCompletionTime = 0n
+        this.workCompletionDescription = toByteString('')
     }
 
     @method()
     public seekerCancelsBeforeAccept(seekerSig: Sig) {
-        assert(this.state === EscrowContract.STATE_INITIAL, "Contract must be in the initial state for a seeker to cancel")
+        assert(this.status === EscrowContract.STATUS_INITIAL, "Contract must be in the initial state for a seeker to cancel")
         assert(this.checkSig(seekerSig, this.seekerKey), "Seeker must sign contract cancellation")
     }
 
@@ -252,24 +226,24 @@ export class EscrowContract extends SmartContract {
 
         // Enforce cutoff time
         if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE) {
-            assert(this.state === EscrowContract.STATE_INITIAL)
+            assert(this.status === EscrowContract.STATUS_INITIAL)
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_START_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED
             )
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_SUBMISSION_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED ||
-                this.state === EscrowContract.STATE_WORK_STARTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+                this.status === EscrowContract.STATUS_WORK_STARTED
             )
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_ACCEPTANCE_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED ||
-                this.state === EscrowContract.STATE_WORK_STARTED ||
-                this.state === EscrowContract.STATE_WORK_SUBMITTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+                this.status === EscrowContract.STATUS_WORK_STARTED ||
+                this.status === EscrowContract.STATUS_WORK_SUBMITTED
             )
         }
 
@@ -288,24 +262,24 @@ export class EscrowContract extends SmartContract {
 
         // Enforce cutoff time
         if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE) {
-            assert(this.state === EscrowContract.STATE_INITIAL)
+            assert(this.status === EscrowContract.STATUS_INITIAL)
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_START_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED
             )
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_SUBMISSION_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED ||
-                this.state === EscrowContract.STATE_WORK_STARTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+                this.status === EscrowContract.STATUS_WORK_STARTED
             )
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_ACCEPTANCE_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED ||
-                this.state === EscrowContract.STATE_WORK_STARTED ||
-                this.state === EscrowContract.STATE_WORK_SUBMITTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+                this.status === EscrowContract.STATUS_WORK_STARTED ||
+                this.status === EscrowContract.STATUS_WORK_SUBMITTED
             )
         }
         
@@ -325,24 +299,24 @@ export class EscrowContract extends SmartContract {
 
         // Enforce cutoff time
         if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE) {
-            assert(this.state === EscrowContract.STATE_INITIAL)
+            assert(this.status === EscrowContract.STATUS_INITIAL)
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_START_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED
             )
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_SUBMISSION_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED ||
-                this.state === EscrowContract.STATE_WORK_STARTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+                this.status === EscrowContract.STATUS_WORK_STARTED
             )
         } else if (this.bountyIncreaseCutoffPoint === EscrowContract.INCREASE_CUTOFF_ACCEPTANCE_OF_WORK) {
             assert(
-                this.state === EscrowContract.STATE_INITIAL ||
-                this.state === EscrowContract.STATE_BID_ACCEPTED ||
-                this.state === EscrowContract.STATE_WORK_STARTED ||
-                this.state === EscrowContract.STATE_WORK_SUBMITTED
+                this.status === EscrowContract.STATUS_INITIAL ||
+                this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+                this.status === EscrowContract.STATUS_WORK_STARTED ||
+                this.status === EscrowContract.STATUS_WORK_SUBMITTED
             )
         }
         
@@ -359,9 +333,9 @@ export class EscrowContract extends SmartContract {
             assert(this.workCompletionDeadline + extension > 500000000n)
         }
         assert(
-            this.state === EscrowContract.STATE_INITIAL ||
-            this.state === EscrowContract.STATE_BID_ACCEPTED ||
-            this.state === EscrowContract.STATE_WORK_STARTED
+            this.status === EscrowContract.STATUS_INITIAL ||
+            this.status === EscrowContract.STATUS_BID_ACCEPTED ||
+            this.status === EscrowContract.STATUS_WORK_STARTED
         )
         this.workCompletionDeadline += extension
         assert(this.checkSig(seekerSig, this.seekerKey), 'Seeker must sign to extend deadline')
@@ -370,7 +344,7 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public furnisherPlacesBid(furnisherSig: Sig, bid: Bid) {
-        assert(this.state === EscrowContract.STATE_INITIAL)
+        assert(this.status === EscrowContract.STATUS_INITIAL)
         assert(this.bountySolversNeedApproval === 1n)
         assert(this.checkSig(furnisherSig, bid.furnisherKey))
         if (this.contractType === EscrowContract.TYPE_BOUNTY) {
@@ -407,7 +381,7 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public seekerAcceptsBid(seekerSig: Sig, bid: Bid) {
-        assert(this.state === EscrowContract.STATE_INITIAL)
+        assert(this.status === EscrowContract.STATUS_INITIAL)
         assert(this.bountySolversNeedApproval === 1n)
         assert(
             this.approvalMode === EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER ||
@@ -417,7 +391,7 @@ export class EscrowContract extends SmartContract {
         assert(this.bids.has(bid))
         assert(this.ctx.sequence === 0xfffffffen)
         assert(this.ctx.locktime < this.workCompletionDeadline - bid.timeRequired)
-        this.state = EscrowContract.STATE_BID_ACCEPTED
+        this.status = EscrowContract.STATUS_BID_ACCEPTED
         this.acceptedBid = bid
         this.bidAcceptedBy = EscrowContract.BID_ACCEPTED_BY_SEEKER
         if (this.contractType === EscrowContract.TYPE_BID) {
@@ -429,7 +403,7 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public platformAcceptsBid(platformSig: Sig, bid: Bid) {
-        assert(this.state === EscrowContract.STATE_INITIAL)
+        assert(this.status === EscrowContract.STATUS_INITIAL)
         assert(this.bountySolversNeedApproval === 1n)
         assert(
             this.approvalMode === EscrowContract.FURNISHER_APPROVAL_MODE_PLATFORM ||
@@ -439,7 +413,7 @@ export class EscrowContract extends SmartContract {
         assert(this.bids.has(bid))
         assert(this.ctx.sequence === 0xfffffffen)
         assert(this.ctx.locktime < this.workCompletionDeadline - bid.timeRequired)
-        this.state = EscrowContract.STATE_BID_ACCEPTED
+        this.status = EscrowContract.STATUS_BID_ACCEPTED
         this.acceptedBid = bid
         this.bidAcceptedBy = EscrowContract.BID_ACCEPTED_BY_PLATFORM
         if (this.contractType === EscrowContract.TYPE_BID) {
@@ -451,12 +425,12 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public seekerWithdrawsBidAcceptance(seekerSig: Sig) {
-        assert(this.state === EscrowContract.STATE_BID_ACCEPTED)
+        assert(this.status === EscrowContract.STATUS_BID_ACCEPTED)
         assert(this.checkSig(seekerSig, this.seekerKey))
         if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
-            assert(this.acceptedBid?.timeOfBid! + this.maxWorkStartDelay < 500000000n)
+            assert((this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay < 500000000n)
         } else {
-            assert(this.acceptedBid?.timeOfBid! + this.maxWorkStartDelay > 500000000n)
+            assert((this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay > 500000000n)
         }
         assert(this.bountySolversNeedApproval === 1n)
         assert(
@@ -465,9 +439,16 @@ export class EscrowContract extends SmartContract {
         )
         assert(this.bidAcceptedBy === EscrowContract.BID_ACCEPTED_BY_SEEKER)
         assert(this.ctx.sequence === 0xfffffffen)
-        assert(this.ctx.locktime > this.acceptedBid?.timeOfBid! + this.maxWorkStartDelay)
-        this.state = EscrowContract.STATE_INITIAL
-        this.acceptedBid = null
+        assert(this.ctx.locktime > (this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay)
+        this.status = EscrowContract.STATUS_INITIAL
+        this.acceptedBid = { // Initially empty / placeholder
+            furnisherKey: this.seekerKey,
+            bidAmount: 0n,
+            timeOfBid: 0n,
+            bond: 0n,
+            timeRequired: 0n,
+            plans: toByteString('')
+        }
         this.bidAcceptedBy = EscrowContract.BID_NOT_YET_ACCEPTED
         if (this.contractType === EscrowContract.TYPE_BID) {
             assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(1n))) // Force bid amount to be withdrawn
@@ -478,12 +459,12 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public platformWithdrawsBidAcceptance(platformSig: Sig) {
-        assert(this.state === EscrowContract.STATE_BID_ACCEPTED)
+        assert(this.status === EscrowContract.STATUS_BID_ACCEPTED)
         assert(this.checkSig(platformSig, this.platformKey))
         if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
-            assert(this.acceptedBid?.timeOfBid! + this.maxWorkStartDelay < 500000000n)
+            assert((this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay < 500000000n)
         } else {
-            assert(this.acceptedBid?.timeOfBid! + this.maxWorkStartDelay > 500000000n)
+            assert((this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay > 500000000n)
         }
         assert(this.bountySolversNeedApproval === 1n)
         assert(
@@ -492,9 +473,16 @@ export class EscrowContract extends SmartContract {
         )
         assert(this.bidAcceptedBy === EscrowContract.BID_ACCEPTED_BY_PLATFORM)
         assert(this.ctx.sequence === 0xfffffffen)
-        assert(this.ctx.locktime > this.acceptedBid?.timeOfBid! + this.maxWorkStartDelay)
-        this.state = EscrowContract.STATE_INITIAL
-        this.acceptedBid = null
+        assert(this.ctx.locktime > (this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay)
+        this.status = EscrowContract.STATUS_INITIAL
+        this.acceptedBid = { // Initially empty / placeholder
+            furnisherKey: this.seekerKey,
+            bidAmount: 0n,
+            timeOfBid: 0n,
+            bond: 0n,
+            timeRequired: 0n,
+            plans: toByteString('')
+        }
         this.bidAcceptedBy = EscrowContract.BID_NOT_YET_ACCEPTED
         if (this.contractType === EscrowContract.TYPE_BID) {
             assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(1n))) // Force bid amount to be withdrawn
@@ -505,40 +493,136 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public furnisherStartsWork(furnisherSig: Sig) {
-        assert(this.state === EscrowContract.STATE_BID_ACCEPTED)
+        assert(this.status === EscrowContract.STATUS_BID_ACCEPTED)
         assert(this.platformAuthorizationRequired === 0n)
         assert(this.bountySolversNeedApproval === 1n)
-        assert(this.checkSig(furnisherSig, this.acceptedBid?.furnisherKey!))
-        this.state = EscrowContract.STATE_WORK_STARTED
-        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + this.acceptedBid?.bond!)))
+        assert(this.checkSig(furnisherSig, (this.acceptedBid as Bid).furnisherKey))
+        this.status = EscrowContract.STATUS_WORK_STARTED
+        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + (this.acceptedBid as Bid).bond)))
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public furnisherStartsWorkWithPlatformAuthorization(furnisherSig: Sig, platformSig: Sig) {
-        assert(this.state === EscrowContract.STATE_BID_ACCEPTED)
+        assert(this.status === EscrowContract.STATUS_BID_ACCEPTED)
         assert(this.platformAuthorizationRequired === 1n)
         assert(this.bountySolversNeedApproval === 1n)
-        assert(this.checkSig(furnisherSig, this.acceptedBid?.furnisherKey!))
+        assert(this.checkSig(furnisherSig, (this.acceptedBid as Bid).furnisherKey))
         assert(this.checkSig(platformSig, this.platformKey))
-        this.state = EscrowContract.STATE_WORK_STARTED
-        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + this.acceptedBid?.bond!)))
+        this.status = EscrowContract.STATUS_WORK_STARTED
+        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + (this.acceptedBid as Bid).bond)))
     }
 
-    // @method(SigHash.ANYONECANPAY_SINGLE)
-    // public decrementOnChain() {
-    //     // Increment counter value
-    //     this.decrement()
+    @method(SigHash.ANYONECANPAY_SINGLE)
+    public seekerRaisesDispute(seekerSig: Sig) {
+        assert(this.checkSig(seekerSig, this.seekerKey))
+        assert(
+            this.status === EscrowContract.STATUS_WORK_STARTED ||
+            this.status === EscrowContract.STATUS_WORK_SUBMITTED
+        )
+        if (this.status === EscrowContract.STATUS_WORK_STARTED) {
+            assert(this.ctx.sequence === 0xfffffffen)
+            if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
+                assert(this.ctx.locktime < 500000000n)
+            } else {
+                assert(this.ctx.locktime > 500000000n)
+            }
+            assert(this.ctx.locktime > this.workCompletionDeadline)
+        }
+        this.status = EscrowContract.STATUS_DISPUTED_BY_SEEKER
+        // this.seekerDisputeEvidence = seekerDisputeEvidence
+        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
+    }
 
-    //     // make sure balance in the contract does not change
-    //     const amount: bigint = this.ctx.utxo.value
-    //     // outputs containing the latest state and an optional change output
-    //     const outputs: ByteString = this.buildStateOutput(amount)
-    //     // verify unlocking tx has the same outputs
-    //     assert(this.ctx.hashOutputs == hash256(outputs), 'hashOutputs mismatch')
-    // }
+    @method(SigHash.ANYONECANPAY_SINGLE)
+    public furnisherRaisesDispute(furnisherSig: Sig) {
+        assert(this.checkSig(furnisherSig, (this.acceptedBid as Bid).furnisherKey))
+        assert(this.status === EscrowContract.STATUS_WORK_SUBMITTED)
+        assert(this.ctx.sequence === 0xfffffffen)
+        if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
+            assert(this.ctx.locktime < 500000000n)
+        } else {
+            assert(this.ctx.locktime > 500000000n)
+        }
+        assert(this.ctx.locktime > (this.workCompletionTime as bigint) + this.maxWorkApprovalDelay)
+        this.status = EscrowContract.STATUS_DISPUTED_BY_FURNISHER
+        // this.furnisherDisputeEvidence = furnisherDisputeEvidence
+        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
+    }
 
-    // @method()
-    // decrement(): void {
-    //     this.count--
-    // }
+    // TODO: Consider adding on-chain adversarial evidence collection states from each party prior to dispute decision by platform.
+
+    @method(SigHash.ANYONECANPAY_SINGLE)
+    public furnisherSubmitsWork(furnisherSig: Sig, workCompletionDescription: ByteString, adHocBid: Bid) {
+        assert(this.ctx.sequence === 0xfffffffen)
+        if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
+            assert(this.ctx.locktime < 500000000n)
+        } else {
+            assert(this.ctx.locktime > 500000000n)
+        }
+        this.status = EscrowContract.STATUS_WORK_SUBMITTED
+        this.workCompletionTime = this.ctx.locktime
+        this.workCompletionDescription = workCompletionDescription
+        if (this.contractType === EscrowContract.TYPE_BOUNTY && this.bountySolversNeedApproval === 0n) {
+            assert(this.status === EscrowContract.STATUS_INITIAL)
+            assert(this.checkSig(furnisherSig, adHocBid.furnisherKey))
+            assert(adHocBid.bidAmount === this.ctx.utxo.value) // Bounty does not include their bond, which they will get back if their solution is legitimate
+            assert(adHocBid.timeOfBid === this.ctx.locktime)
+            assert(adHocBid.bond === this.requiredBondAmount)
+            assert(adHocBid.timeRequired === 0n)
+            this.acceptedBid = adHocBid
+            assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + this.requiredBondAmount)))
+        } else {
+            assert(this.status === EscrowContract.STATUS_WORK_STARTED)
+            assert(this.checkSig(furnisherSig, (this.acceptedBid as Bid).furnisherKey))
+            assert(this.ctx.locktime > (this.acceptedBid as Bid).timeOfBid)
+            assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
+        }
+    }
+
+    @method(SigHash.ANYONECANPAY_SINGLE)
+    public seekerApprovesWork(seekerSig: Sig) {
+        assert(this.status === EscrowContract.STATUS_WORK_SUBMITTED)
+        assert(this.checkSig(seekerSig, this.seekerKey))
+        this.status = EscrowContract.STATUS_RESOLVED
+        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
+    }
+
+    @method()
+    public furnisherClaimsPayment(furnisherSig: Sig) {
+        assert(this.status === EscrowContract.STATUS_RESOLVED)
+        assert(this.checkSig(furnisherSig, (this.acceptedBid as Bid).furnisherKey))
+    }
+
+    @method(SigHash.ANYONECANPAY_ALL)
+    public platformResolvesDispute(platformSig: Sig, amountForSeeker: bigint, amountForFurnisher: bigint, otherPlatformOutputs: ByteString) {
+        assert(
+            this.status === EscrowContract.STATUS_DISPUTED_BY_FURNISHER ||
+            this.status === EscrowContract.STATUS_DISPUTED_BY_SEEKER
+        )
+        assert(this.checkSig(platformSig, this.platformKey))
+        assert(amountForSeeker >= 0n)
+        assert(amountForFurnisher >= 0n)
+        if (this.escrowMustBeFullyDecisive === 1n) {
+            assert(amountForSeeker === 0n || amountForFurnisher === 0n)
+        }
+        // validate total of amounts amounts less fee
+        assert(amountForSeeker + amountForFurnisher >= this.ctx.utxo.value - (this.ctx.utxo.value * (this.escrowServicePercent / 100n)))
+        if (amountForSeeker > 0n && amountForFurnisher === 0n) {
+            assert(this.ctx.hashOutputs === hash256(
+                Utils.buildPublicKeyHashOutput(hash160(this.seekerKey), amountForSeeker)
+                + otherPlatformOutputs
+            ))
+        } else if (amountForSeeker === 0n && amountForFurnisher > 0n) {
+            assert(this.ctx.hashOutputs === hash256(
+                Utils.buildPublicKeyHashOutput(hash160((this.acceptedBid as Bid).furnisherKey), amountForFurnisher)
+                + otherPlatformOutputs
+            ))
+        } else {
+            assert(this.ctx.hashOutputs === hash256(
+                Utils.buildPublicKeyHashOutput(hash160(this.seekerKey), amountForSeeker)
+                + Utils.buildPublicKeyHashOutput(hash160((this.acceptedBid as Bid).furnisherKey), amountForFurnisher)
+                + otherPlatformOutputs
+            ))
+        }
+    }
 }
