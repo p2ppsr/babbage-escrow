@@ -113,6 +113,9 @@ export class EscrowContract extends SmartContract {
     contractType: bigint
 
     @prop(true)
+    contractSurvivesAdverseFurnisherDisputeResolution: bigint
+
+    @prop(true)
     bountyIncreaseAllowanceMode: bigint
 
     @prop(true)
@@ -165,6 +168,7 @@ export class EscrowContract extends SmartContract {
         bountyIncreaseAllowanceMode: bigint = EscrowContract.BOUNTY_INCREASE_FORBIDDEN,
         bountyIncreaseCutoffPoint: bigint = EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE,
         contractType: bigint = EscrowContract.TYPE_BID,
+        contractSurvivesAdverseFurnisherDisputeResolution: bigint = 0n,
         bids: HashedSet<Bid> = new HashedSet()
     ) {
         super(...arguments)
@@ -191,6 +195,7 @@ export class EscrowContract extends SmartContract {
         this.delayUnit = delayUnit // Are times measured in seconds or blocks for this contract?
         this.approvalMode = approvalMode // Who can approve a worker to start work? You, the platform, or either/or?
         this.contractType = contractType // Are you putting up a fixed bounty for this work or accepting bids at different prices to get it done?
+        this.contractSurvivesAdverseFurnisherDisputeResolution = contractSurvivesAdverseFurnisherDisputeResolution // If platform finds workers fail, does the contract survive?
         this.bountyIncreaseAllowanceMode = bountyIncreaseAllowanceMode // If this is a bounty contract, who may increase the bounty?
         this.bountyIncreaseCutoffPoint = bountyIncreaseCutoffPoint // When is the latest point where someone may make the bounty higher?
 
@@ -440,6 +445,7 @@ export class EscrowContract extends SmartContract {
         assert(this.bidAcceptedBy === EscrowContract.BID_ACCEPTED_BY_SEEKER)
         assert(this.ctx.sequence === 0xfffffffen)
         assert(this.ctx.locktime > (this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay)
+        this.bids.delete(this.acceptedBid)
         this.status = EscrowContract.STATUS_INITIAL
         this.acceptedBid = { // Initially empty / placeholder
             furnisherKey: this.seekerKey,
@@ -474,6 +480,7 @@ export class EscrowContract extends SmartContract {
         assert(this.bidAcceptedBy === EscrowContract.BID_ACCEPTED_BY_PLATFORM)
         assert(this.ctx.sequence === 0xfffffffen)
         assert(this.ctx.locktime > (this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay)
+        this.bids.delete(this.acceptedBid)
         this.status = EscrowContract.STATUS_INITIAL
         this.acceptedBid = { // Initially empty / placeholder
             furnisherKey: this.seekerKey,
@@ -608,10 +615,17 @@ export class EscrowContract extends SmartContract {
         // validate total of amounts amounts less fee
         assert(amountForSeeker + amountForFurnisher >= this.ctx.utxo.value - (this.ctx.utxo.value * (this.escrowServicePercent / 100n)))
         if (amountForSeeker > 0n && amountForFurnisher === 0n) {
-            assert(this.ctx.hashOutputs === hash256(
-                Utils.buildPublicKeyHashOutput(hash160(this.seekerKey), amountForSeeker)
-                + otherPlatformOutputs
-            ))
+            if (this.contractSurvivesAdverseFurnisherDisputeResolution === 1n) {
+                assert(this.ctx.hashOutputs === hash256(
+                    this.buildStateOutput(amountForSeeker)
+                    + otherPlatformOutputs
+                ))
+            } else {
+                assert(this.ctx.hashOutputs === hash256(
+                    Utils.buildPublicKeyHashOutput(hash160(this.seekerKey), amountForSeeker)
+                    + otherPlatformOutputs
+                ))
+            }
         } else if (amountForSeeker === 0n && amountForFurnisher > 0n) {
             assert(this.ctx.hashOutputs === hash256(
                 Utils.buildPublicKeyHashOutput(hash160((this.acceptedBid as Bid).furnisherKey), amountForFurnisher)
