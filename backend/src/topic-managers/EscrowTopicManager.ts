@@ -1,16 +1,11 @@
 import { AdmittanceInstructions, TopicManager } from '@bsv/overlay'
 import { Transaction, ProtoWallet, Utils } from '@bsv/sdk'
 import docs from './EscrowTopicDocs.md.js'
-import meterContractJson from '../../artifacts/Meter.json' with { type: 'json' }
-import { MeterContract } from '../contracts/Escrow.js'
-MeterContract.loadArtifact(meterContractJson)
+import escrowContractJson from '../../artifacts/Escrow.json' with { type: 'json' }
+import { EscrowContract } from '../contracts/Escrow.js'
+EscrowContract.loadArtifact(escrowContractJson)
 
-const anyoneWallet = new ProtoWallet('anyone')
-
-/**
- *  Note: The PushDrop package is used to decode BRC-48 style Pay-to-Push-Drop tokens.
- */
-export default class MeterTopicManager implements TopicManager {
+export default class EscrowTopicManager implements TopicManager {
   /**
    * Identify if the outputs are admissible depending on the particular protocol requirements
    * @param beef - The transaction data in BEEF format
@@ -30,23 +25,9 @@ export default class MeterTopicManager implements TopicManager {
         try {
           // Parse sCrypt locking script
           const script = output.lockingScript.toHex()
-          // Ensure Meter can be constructed from script
-          const meter = MeterContract.fromLockingScript(script) as MeterContract
-          console.log(meter)
-          // This is where other overlay-level validation rules would be enforced
-          // Verify creator signature came from creator public key
-          const verifyResult = await anyoneWallet.verifySignature({
-            protocolID: [0, 'meter'],
-            keyID: '1',
-            counterparty: meter.creatorIdentityKey,
-            data: [1],
-            signature: Utils.toArray(meter.creatorSignature, 'hex')
-          })
-          console.log(verifyResult)
-          if (verifyResult.valid !== true) {
-            throw new Error('Signature invalid')
-          }
-
+          // Ensure Escrow can be constructed from script
+          const escrow = EscrowContract.fromLockingScript(script) as EscrowContract
+          console.log(escrow)
           outputsToAdmit.push(i)
         } catch (error) {
           // Continue processing other outputs
@@ -55,7 +36,6 @@ export default class MeterTopicManager implements TopicManager {
       }
       if (outputsToAdmit.length === 0) {
         console.warn('No outputs admitted!')
-        // throw new ERR_BAD_REQUEST('No outputs admitted!')
       }
     } catch (error) {
       const beefStr = JSON.stringify(beef, null, 2)
@@ -91,8 +71,8 @@ export default class MeterTopicManager implements TopicManager {
     informationURL?: string
   }> {
     return {
-      name: 'Meter Topic Manager',
-      shortDescription: 'Meters, up and down.'
+      name: 'Escrow Topic Manager',
+      shortDescription: 'Escrow contract management.'
     }
   }
 }

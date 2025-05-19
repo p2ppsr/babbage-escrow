@@ -2,108 +2,70 @@ import {
   LookupService,
   LookupQuestion,
   LookupAnswer,
-  LookupFormula
+  LookupFormula,
+  OutputSpent,
+  OutputAdmittedByTopic,
+  AdmissionMode,
+  SpendNotificationMode
 } from '@bsv/overlay'
-import { MeterStorage } from './EscrowStorage.js'
+import { EscrowStorage } from './EscrowStorage.js'
 import { Script, Utils } from '@bsv/sdk'
 import docs from './EscrowLookupDocs.md.js'
-import meterContractJson from '../../artifacts/Meter.json' with { type: 'json' }
-import { MeterContract } from '../contracts/Escrow.js'
+import escrowContractJson from '../../artifacts/Escrow.json' with { type: 'json' }
+import { EscrowContract } from '../contracts/Escrow.js'
 import { Db } from 'mongodb'
-MeterContract.loadArtifact(meterContractJson)
+import { EscrowRecord } from '../constants.js'
+EscrowContract.loadArtifact(escrowContractJson)
 
 /**
- * Implements a Meter lookup service
+ * Implements an Escrow lookup service
  *
- * Note: The sCrypt contract is used to decode Meter tokens.
+ * Note: The sCrypt contract is used to decode Escrow outputs.
  *
  * @public
  */
-class MeterLookupService implements LookupService {
-  /**
-   * Constructs a new MeterLookupService instance
-   * @param storage - The storage instance to use for managing records
-   */
-  constructor(public storage: MeterStorage) {}
+class EscrowLookupService implements LookupService {
+  readonly admissionMode: AdmissionMode = 'locking-script'
+  readonly spendNotificationMode: SpendNotificationMode = 'none'
+  constructor(public storage: EscrowStorage) {}
 
-  /**
-   * Notifies the lookup service of a new output added.
-   *
-   * @param {string} txid - The transaction ID containing the output.
-   * @param {number} outputIndex - The index of the output in the transaction.
-   * @param {Script} outputScript - The script of the output to be processed.
-   * @param {string} topic - The topic associated with the output.
-   *
-   * @returns {Promise<void>} A promise that resolves when the processing is complete.
-   * @throws Will throw an error if there is an issue with storing the record in the storage engine.
-   */
-  async outputAdded?(
-    txid: string,
-    outputIndex: number,
-    outputScript: Script,
-    topic: string
-  ): Promise<void> {
+  async outputAdmittedByTopic(payload: OutputAdmittedByTopic): Promise<void> {
+    if (payload.mode !== 'locking-script') throw new Error('Invalid payload')
+    const { topic, txid, outputIndex, lockingScript } = payload
     if (topic !== 'tm_meter') return
     try {
-      // Decode the Meter token fields from the Bitcoin outputScript with the contract class
-      const meter = MeterContract.fromLockingScript(
-        outputScript.toHex()
-      ) as MeterContract
+      // Decode the Escrow token fields from the Bitcoin outputScript with the contract class
+      const escrow = EscrowContract.fromLockingScript(
+        lockingScript.toHex()
+      ) as EscrowContract
 
-      // Parse out the message field
-      const value = Number(meter.count)
-      const creatorIdentityKey = Utils.toHex(
-        Utils.toArray(meter.creatorIdentityKey, 'utf8')
-      )
+
+      ////////// logic for parsing into a record
 
       // Store the token fields for future lookup
-      await this.storage.storeRecord(
-        txid,
-        outputIndex,
-        value,
-        creatorIdentityKey
-      )
+      await this.storage.storeRecord({
+        // ...
+      } as EscrowRecord)
     } catch (e) {
       console.error('Error indexing token in lookup database', e)
       return
     }
   }
 
-  /**
-   * Notifies the lookup service that an output was spent
-   * @param txid - The transaction ID of the spent output
-   * @param outputIndex - The index of the spent output
-   * @param topic - The topic associated with the spent output
-   */
-  async outputSpent?(
-    txid: string,
-    outputIndex: number,
-    topic: string
-  ): Promise<void> {
+  async outputSpent(payload: OutputSpent): Promise<void> {
+    if (payload.mode !== 'none') throw new Error('Invalid payload')
+    const { topic, txid, outputIndex } = payload
     if (topic !== 'tm_meter') return
     await this.storage.deleteRecord(txid, outputIndex)
   }
 
-  /**
-   * Notifies the lookup service that an output has been deleted
-   * @param txid - The transaction ID of the deleted output
-   * @param outputIndex - The index of the deleted output
-   * @param topic - The topic associated with the deleted output
-   */
-  async outputDeleted?(
+  async outputEvicted(
     txid: string,
-    outputIndex: number,
-    topic: string
+    outputIndex: number
   ): Promise<void> {
-    if (topic !== 'tm_meter') return
     await this.storage.deleteRecord(txid, outputIndex)
   }
 
-  /**
-   * Answers a lookup query
-   * @param question - The lookup question to be answered
-   * @returns A promise that resolves to a lookup answer or formula
-   */
   async lookup(
     question: LookupQuestion
   ): Promise<LookupAnswer | LookupFormula> {
@@ -115,8 +77,6 @@ class MeterLookupService implements LookupService {
     }
 
     const query = question.query as {
-      txid?: string
-      creatorIdentityKey?: string
       findAll?: boolean
     }
     if (query.findAll) {
@@ -126,19 +86,10 @@ class MeterLookupService implements LookupService {
     throw new Error(`question.query:${mess}}`)
   }
 
-  /**
-   * Returns documentation specific to this overlay lookup service
-   * @returns A promise that resolves to the documentation string
-   */
   async getDocumentation(): Promise<string> {
     return docs
   }
 
-  /**
-   * Returns metadata associated with this lookup service
-   * @returns A promise that resolves to an object containing metadata
-   * @throws An error indicating the method is not implemented
-   */
   async getMetaData(): Promise<{
     name: string
     shortDescription: string
@@ -147,13 +98,12 @@ class MeterLookupService implements LookupService {
     informationURL?: string
   }> {
     return {
-      name: 'Meter Lookup Service',
-      shortDescription: 'Meters, up and down.'
+      name: 'Escrow Lookup Service',
+      shortDescription: 'Tracks escrow contract UTXOs.'
     }
   }
 }
 
-// Factory function
-export default (db: Db): MeterLookupService => {
-  return new MeterLookupService(new MeterStorage(db))
+export default (db: Db): EscrowLookupService => {
+  return new EscrowLookupService(new EscrowStorage(db))
 }

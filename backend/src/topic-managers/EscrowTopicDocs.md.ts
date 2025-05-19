@@ -1,7 +1,7 @@
-export default `# Meter Topic Manager Docs
+export default `# Escrow Topic Manager Docs
 
-To have outputs accepted into the Meter overlay network, use the Meter sCrypt contract to create valid locking scripts.
+To have outputs accepted into the Escrow overlay network, use the Escrow sCrypt contract to create valid instantiations.
 
-Submit transactions that start new meters at 1, or spend existing meters already submitted.
+Submit transactions that start new escrow contracts, or spend existing ones already submitted in a valid way.
 
-The latest state of all meters will be tracked, and will be available through the corresponding Meter Lookup Service.`
+The latest state of all active escrows will be tracked, and will be available through the corresponding Escrow Lookup Service.`

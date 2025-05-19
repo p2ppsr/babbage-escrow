@@ -1,4 +1,4 @@
-export default `# Meter Lookup Service
+export default `# Escrow Lookup Service
 
 To use this service, send a query that comprises a string "findAll".
 

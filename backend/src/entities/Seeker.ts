@@ -17,7 +17,7 @@ export default class Seeker {
     ) {
     }
 
-    async seek (thing: number[], bounty?: number): Promise<EscrowRecord> {
+    async seek (thing: number[], bounty?: number): Promise<void> {
         if (typeof bounty !== 'number') {
             this.contractType = 'bid'
         }

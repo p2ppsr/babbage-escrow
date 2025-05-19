@@ -1,37 +1,30 @@
 import { Collection, Db } from 'mongodb'
-import { MeterRecord, UTXOReference } from '../constants.js'
+import { EscrowRecord, UTXOReference } from '../constants.js'
 
 // Implements a Lookup StorageEngine for Meter
-export class MeterStorage {
-  private readonly records: Collection<MeterRecord>
+export class EscrowStorage {
+  private readonly records: Collection<EscrowRecord>
 
   /**
    * Constructs a new MeterStorageEngine instance
    * @param {Db} db - connected mongo database instance
    */
   constructor(private readonly db: Db) {
-    this.records = db.collection<MeterRecord>('MeterRecords')
+    this.records = db.collection<EscrowRecord>('EscrowRecords')
   }
 
   /**
-   * Stores meter record
+   * Stores escrow record
    * @param {string} txid transaction id
    * @param {number} outputIndex index of the UTXO
    * @param {string} value - meter value to save
    */
-  async storeRecord(txid: string, outputIndex: number, value: number, creatorIdentityKey: string): Promise<void> {
-    // Insert new record
-    await this.records.insertOne({
-      txid,
-      outputIndex,
-      value,
-      creatorIdentityKey,
-      createdAt: new Date()
-    })
+  async storeRecord(record: EscrowRecord): Promise<void> {
+    await this.records.insertOne(record)
   }
 
   /**
-   * Delete a matching Meter record
+   * Delete a matching Escrow record
    * @param {string} txid transaction id
    * @param {number} outputIndex Output index of the UTXO
    */
