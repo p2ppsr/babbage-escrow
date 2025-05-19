@@ -314,7 +314,8 @@ export class EscrowContract extends SmartContract {
             assert(bid.timeRequired > 500000000n)
             assert(bid.timeOfBid > 500000000n)
         }
-        assert(this.ctx.sequence === 0xfffffffen)
+        // assert(this.ctx.sequence === 0xfffffffen) // !!!
+        this.enforceProperTimeUnits()
         assert(this.ctx.locktime >= bid.timeOfBid)
         assert(this.bids.size + 1 <= this.maxAllowedBids)
         this.bids.add(bid)
@@ -415,12 +416,7 @@ export class EscrowContract extends SmartContract {
             this.status === EscrowContract.STATUS_WORK_SUBMITTED
         )
         if (this.status === EscrowContract.STATUS_WORK_STARTED) {
-            assert(this.ctx.sequence === 0xfffffffen)
-            if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
-                assert(this.ctx.locktime < 500000000n)
-            } else {
-                assert(this.ctx.locktime > 500000000n)
-            }
+            this.enforceProperTimeUnits()
             assert(this.ctx.locktime > this.workCompletionDeadline)
         }
         this.status = EscrowContract.STATUS_DISPUTED_BY_SEEKER
@@ -432,12 +428,7 @@ export class EscrowContract extends SmartContract {
     public furnisherRaisesDispute(furnisherSig: Sig) {
         assert(this.checkSig(furnisherSig, (this.acceptedBid as Bid).furnisherKey))
         assert(this.status === EscrowContract.STATUS_WORK_SUBMITTED)
-        assert(this.ctx.sequence === 0xfffffffen)
-        if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
-            assert(this.ctx.locktime < 500000000n)
-        } else {
-            assert(this.ctx.locktime > 500000000n)
-        }
+        this.enforceProperTimeUnits()
         assert(this.ctx.locktime > (this.workCompletionTime as bigint) + this.maxWorkApprovalDelay)
         this.status = EscrowContract.STATUS_DISPUTED_BY_FURNISHER
         // this.furnisherDisputeEvidence = furnisherDisputeEvidence
@@ -448,12 +439,7 @@ export class EscrowContract extends SmartContract {
 
     @method(SigHash.ANYONECANPAY_SINGLE)
     public furnisherSubmitsWork(furnisherSig: Sig, workCompletionDescription: ByteString, adHocBid: Bid) {
-        assert(this.ctx.sequence === 0xfffffffen)
-        if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
-            assert(this.ctx.locktime < 500000000n)
-        } else {
-            assert(this.ctx.locktime > 500000000n)
-        }
+        this.enforceProperTimeUnits()
         this.workCompletionTime = this.ctx.locktime
         this.workCompletionDescription = workCompletionDescription
         if (this.contractType === EscrowContract.TYPE_BOUNTY && this.bountySolversNeedApproval === 0n) {
@@ -492,42 +478,59 @@ export class EscrowContract extends SmartContract {
     }
 
     @method(SigHash.ANYONECANPAY_ALL)
-    public platformResolvesDispute(platformSig: Sig, amountForSeeker: bigint, amountForFurnisher: bigint, otherPlatformOutputs: ByteString) {
+    public resolveDispute(platformResolves: bigint, amountForSeeker: bigint, amountForFurnisher: bigint, otherOutputs: ByteString, platformSig: Sig, seekerSig: Sig, furnisherSig: Sig) {
         assert(
             this.status === EscrowContract.STATUS_DISPUTED_BY_FURNISHER ||
             this.status === EscrowContract.STATUS_DISPUTED_BY_SEEKER
         )
-        assert(this.checkSig(platformSig, this.platformKey))
         assert(amountForSeeker >= 0n)
         assert(amountForFurnisher >= 0n)
-        if (this.escrowMustBeFullyDecisive === 1n) {
-            assert(amountForSeeker === 0n || amountForFurnisher === 0n)
+        if (platformResolves === 1n) {
+            assert(this.checkSig(platformSig, this.platformKey))
+            if (this.escrowMustBeFullyDecisive === 1n) {
+                assert(amountForSeeker === 0n || amountForFurnisher === 0n)
+            }
+            // validate total of amounts less fee
+            assert(amountForSeeker + amountForFurnisher >= this.ctx.utxo.value - (this.ctx.utxo.value * this.escrowServiceFeeBasisPoints) / 10000n)
+        } else {
+            assert(this.checkSig(seekerSig, this.seekerKey))
+            assert(this.checkSig(furnisherSig, this.acceptedBid.furnisherKey))
+            // validate total of amounts
+            assert(amountForSeeker + amountForFurnisher >= this.ctx.utxo.value)
         }
-        // validate total of amounts amounts less fee
-        assert(amountForSeeker + amountForFurnisher >= this.ctx.utxo.value - (this.ctx.utxo.value * this.escrowServiceFeeBasisPoints) / 10000n)
         if (amountForSeeker > 0n && amountForFurnisher === 0n) {
             if (this.contractSurvivesAdverseFurnisherDisputeResolution === 1n) {
                 assert(this.ctx.hashOutputs === hash256(
                     this.buildStateOutput(amountForSeeker)
-                    + otherPlatformOutputs
+                    + otherOutputs
                 ))
             } else {
                 assert(this.ctx.hashOutputs === hash256(
                     Utils.buildPublicKeyHashOutput(hash160(this.seekerKey), amountForSeeker)
-                    + otherPlatformOutputs
+                    + otherOutputs
                 ))
             }
         } else if (amountForSeeker === 0n && amountForFurnisher > 0n) {
             assert(this.ctx.hashOutputs === hash256(
                 Utils.buildPublicKeyHashOutput(hash160((this.acceptedBid as Bid).furnisherKey), amountForFurnisher)
-                + otherPlatformOutputs
+                + otherOutputs
             ))
         } else {
             assert(this.ctx.hashOutputs === hash256(
                 Utils.buildPublicKeyHashOutput(hash160(this.seekerKey), amountForSeeker)
                 + Utils.buildPublicKeyHashOutput(hash160((this.acceptedBid as Bid).furnisherKey), amountForFurnisher)
-                + otherPlatformOutputs
+                + otherOutputs
             ))
+        }
+    }
+
+    @method()
+    private enforceProperTimeUnits(): void {
+        assert(this.ctx.sequence === 0xfffffffen)
+        if (this.delayUnit === EscrowContract.DELAY_UNIT_BLOCKS) {
+            assert(this.ctx.locktime < 500000000n)
+        } else {
+            assert(this.ctx.locktime > 500000000n)
         }
     }
 }
