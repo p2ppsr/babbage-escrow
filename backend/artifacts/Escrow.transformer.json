@@ -9,6 +9,7 @@
     "furnisherPlacesBid",
     "acceptBid",
     "withdrawBidAcceptance",
+    "rejectBid",
     "furnisherStartsWork",
     "furnisherStartsWorkWithPlatformAuthorization",
     "seekerRaisesDispute",

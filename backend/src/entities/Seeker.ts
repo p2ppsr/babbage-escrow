@@ -14,8 +14,7 @@ export default class Seeker {
         private readonly service: string = 'ls_escrow',
         private readonly resolver: LookupResolver = new LookupResolver(),
         private readonly keyDerivationProtocol = 'escrow'
-    ) {
-    }
+    ) {}
 
     async seek (thing: number[], bounty?: number): Promise<void> {
         if (typeof bounty !== 'number') {

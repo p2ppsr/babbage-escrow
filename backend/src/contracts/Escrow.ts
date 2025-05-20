@@ -7,11 +7,12 @@ import {
     SmartContract,
     SigHash,
     PubKey,
-    HashedSet,
     Sig,
     Utils,
     hash160,
-    toByteString
+    toByteString,
+    FixedArray,
+    fill
 } from 'scrypt-ts'
 
 export type Bid = {
@@ -34,8 +35,8 @@ export class EscrowContract extends SmartContract {
     static readonly STATUS_WORK_STARTED: bigint = 13n
     static readonly STATUS_WORK_SUBMITTED: bigint = 14n
     static readonly STATUS_RESOLVED: bigint = 15n
-    static readonly STATUS_DISPUTED_BY_SEEKER: bigint = 21n
-    static readonly STATUS_DISPUTED_BY_FURNISHER: bigint = 22n
+    static readonly STATUS_DISPUTED_BY_SEEKER: bigint = 16n
+    static readonly STATUS_DISPUTED_BY_FURNISHER: bigint = 17n
 
     // Furnisher bonding modes
     static readonly FURNISHER_BONDING_MODE_FORBIDDEN: bigint = 31n
@@ -121,7 +122,7 @@ export class EscrowContract extends SmartContract {
     bountyIncreaseCutoffPoint: bigint
 
     @prop(true)
-    bids: HashedSet<Bid>
+    bids: FixedArray<Bid, 4>
 
     @prop(true)
     seekerKey: PubKey
@@ -168,7 +169,17 @@ export class EscrowContract extends SmartContract {
         bountyIncreaseCutoffPoint: bigint = EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE,
         contractType: bigint = EscrowContract.TYPE_BID,
         contractSurvivesAdverseFurnisherDisputeResolution: bigint = 0n,
-        bids: HashedSet<Bid> = new HashedSet()
+        bids: FixedArray<Bid, 4> = fill(
+            {
+                furnisherKey: seekerKey,
+                bidAmount: 0n,
+                timeOfBid: 0n,
+                bond: 0n,
+                timeRequired: 0n,
+                plans: toByteString('')
+            },
+            4
+        )
     ) {
         super(...arguments)
 
@@ -285,7 +296,7 @@ export class EscrowContract extends SmartContract {
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)
-    public furnisherPlacesBid(furnisherSig: Sig, bid: Bid) {
+    public furnisherPlacesBid(furnisherSig: Sig, bid: Bid, index: bigint) {
         assert(this.status === EscrowContract.STATUS_INITIAL)
         assert(this.bountySolversNeedApproval === 1n)
         assert(this.checkSig(furnisherSig, bid.furnisherKey))
@@ -297,7 +308,7 @@ export class EscrowContract extends SmartContract {
         if (this.furnisherBondingMode === EscrowContract.FURNISHER_BONDING_MODE_FORBIDDEN) {
             assert(bid.bond === 0n)
         } else if (this.furnisherBondingMode === EscrowContract.FURNISHER_BONDING_MODE_OPTIONAL) {
-            assert(bid.bond >= 0n) // Bonds cannot be below sero, this would allow a worker to withdraw part of the payment when work starts.
+            assert(bid.bond >= 0n) // Bonds cannot be below zero, this would allow a worker to withdraw part of the payment when work starts.
         } else {
             assert(bid.bond === this.requiredBondAmount)
             assert(bid.bond >= 0n)
@@ -314,16 +325,16 @@ export class EscrowContract extends SmartContract {
             assert(bid.timeRequired > 500000000n)
             assert(bid.timeOfBid > 500000000n)
         }
-        // assert(this.ctx.sequence === 0xfffffffen) // !!!
         this.enforceProperTimeUnits()
         assert(this.ctx.locktime >= bid.timeOfBid)
-        assert(this.bids.size + 1 <= this.maxAllowedBids)
-        this.bids.add(bid)
+        assert(this.bids[Number(index)].furnisherKey === this.seekerKey) // Must use an open slot
+        this.bids[Number(index)] = bid
         assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)
-    public acceptBid(mode: bigint, sig: Sig, bid: Bid) {
+    public acceptBid(mode: bigint, sig: Sig, index: bigint) {
+        const bid = this.bids[Number(index)]
         assert(this.status === EscrowContract.STATUS_INITIAL)
         assert(this.bountySolversNeedApproval === 1n)
         if (this.approvalMode === EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER_OR_PLATFORM) {
@@ -341,7 +352,6 @@ export class EscrowContract extends SmartContract {
             assert(this.checkSig(sig, this.platformKey))
             this.bidAcceptedBy = EscrowContract.BID_ACCEPTED_BY_PLATFORM
         }
-        assert(this.bids.has(bid))
         assert(this.ctx.sequence === 0xfffffffen)
         assert(this.ctx.locktime < this.workCompletionDeadline - bid.timeRequired)
         this.status = EscrowContract.STATUS_BID_ACCEPTED
@@ -354,7 +364,7 @@ export class EscrowContract extends SmartContract {
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)
-    public withdrawBidAcceptance(sig: Sig) {
+    public withdrawBidAcceptance(sig: Sig, index: bigint) {
         assert(this.status === EscrowContract.STATUS_BID_ACCEPTED)
         if (this.bidAcceptedBy === EscrowContract.BID_ACCEPTED_BY_SEEKER) {
             assert(this.checkSig(sig, this.seekerKey))
@@ -366,12 +376,19 @@ export class EscrowContract extends SmartContract {
         } else {
             assert((this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay > 500000000n)
         }
-        assert(this.bountySolversNeedApproval === 1n)
-        assert(this.ctx.sequence === 0xfffffffen)
+        this.enforceProperTimeUnits()
         assert(this.ctx.locktime > (this.acceptedBid as Bid).timeOfBid + this.maxWorkStartDelay)
-        this.bids.delete(this.acceptedBid)
+        assert(this.bids[Number(index)] === this.acceptedBid)
         this.status = EscrowContract.STATUS_INITIAL
         this.acceptedBid = { // Initially empty / placeholder
+            furnisherKey: this.seekerKey,
+            bidAmount: 0n,
+            timeOfBid: 0n,
+            bond: 0n,
+            timeRequired: 0n,
+            plans: toByteString('')
+        }
+        this.bids[Number(index)] = { // Free up the slot
             furnisherKey: this.seekerKey,
             bidAmount: 0n,
             timeOfBid: 0n,
@@ -385,6 +402,33 @@ export class EscrowContract extends SmartContract {
         } else {
             assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
         }
+    }
+
+    @method(SigHash.ANYONECANPAY_SINGLE)
+    public rejectBid(mode: bigint, sig: Sig, index: bigint) {
+        assert(this.status === EscrowContract.STATUS_INITIAL)
+        if (this.approvalMode === EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER_OR_PLATFORM) {
+            assert(
+                mode === EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER ||
+                mode === EscrowContract.FURNISHER_APPROVAL_MODE_PLATFORM
+            )
+        } else {
+            assert(mode === this.approvalMode)
+        }
+        if (mode === EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER) {
+            assert(this.checkSig(sig, this.seekerKey))
+        } else {
+            assert(this.checkSig(sig, this.platformKey))
+        }
+        this.bids[Number(index)] = { // Free up the slot
+            furnisherKey: this.seekerKey,
+            bidAmount: 0n,
+            timeOfBid: 0n,
+            bond: 0n,
+            timeRequired: 0n,
+            plans: toByteString('')
+        }
+        assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value)))
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)
