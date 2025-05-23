@@ -1,9 +1,9 @@
 {
-  "name": "@bsv/backend",
+  "name": "babbage-escrow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "BSV Blockchain Application Backend",
+  "description": "General escrow contracts, entities, and overlays for Metanet and BSV applications",
   "module": "dist/esm/mod.js",
   "types": "dist/types/mod.d.ts",
   "files": [

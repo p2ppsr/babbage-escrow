@@ -74,9 +74,6 @@ export class EscrowContract extends SmartContract {
     minAllowableBid: bigint
 
     @prop(true)
-    maxAllowedBids: bigint
-
-    @prop(true)
     escrowServiceFeeBasisPoints: bigint
 
     @prop(true)
@@ -156,7 +153,6 @@ export class EscrowContract extends SmartContract {
         workDescription: ByteString,
         workCompletionDeadline: bigint,
         minAllowableBid: bigint = 0n,
-        maxAllowedBids: bigint = 7n,
         bountySolversNeedApproval: bigint = 1n,
         escrowMustBeFullyDecisive: bigint = 1n,
         furnisherBondingMode: bigint = EscrowContract.FURNISHER_BONDING_MODE_OPTIONAL,
@@ -192,10 +188,8 @@ export class EscrowContract extends SmartContract {
         this.workCompletionDeadline = workCompletionDeadline // When do you need it by?
 
         // Optional values
-        this.minAllowableBid = minAllowableBid // What's the minimum bid?
-        this.maxAllowedBids = maxAllowedBids // How many bids max?
-        
         // Contract configuration
+        this.minAllowableBid = minAllowableBid // What's the minimum bid?
         this.bountySolversNeedApproval = bountySolversNeedApproval // Can someone start work without talking to anyone, and the first one done gets the money?
         this.escrowMustBeFullyDecisive = escrowMustBeFullyDecisive // if people mess up, is escrow forced to make an all-or-nothing award?
         this.furnisherBondingMode = furnisherBondingMode // Can bidders offer up collateral for in case they mess up? Is this required?

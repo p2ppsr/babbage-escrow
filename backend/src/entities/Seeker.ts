@@ -1,32 +1,83 @@
-import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver } from '@bsv/sdk'
-import type { EscrowRecord } from '../constants.js'
+import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver, Transaction } from '@bsv/sdk'
+import type { EscrowRecord, GlobalConfig } from '../constants.js'
+import { PubKey, toByteString } from 'scrypt-ts'
+import { EscrowContract } from '../contracts/Escrow.js'
+import escrowArtifact from '../../artifacts/Escrow.json' with { type: 'json' }
+EscrowContract.loadArtifact(escrowArtifact)
 
 export default class Seeker {
     private derivedPublicKey: string | null = null
 
     constructor (
-        private contractType: 'bounty' | 'bid',
-        private readonly maxAllowedBids: number = 7,
-        private readonly escrowServiceFeePercent: number = 1.3,
+        private readonly globalConfig: GlobalConfig,
         private readonly wallet: WalletInterface = new WalletClient('auto', 'localhost'),
-        private readonly topic: string = 'tm_escrow',
-        private readonly broadcaster: TopicBroadcaster = new TopicBroadcaster([this.topic]),
-        private readonly service: string = 'ls_escrow',
-        private readonly resolver: LookupResolver = new LookupResolver(),
-        private readonly keyDerivationProtocol = 'escrow'
+        private readonly broadcaster: TopicBroadcaster = new TopicBroadcaster([this.globalConfig.topic]),
+        private readonly resolver: LookupResolver = new LookupResolver()
     ) {}
 
-    async seek (thing: number[], bounty?: number): Promise<void> {
-        if (typeof bounty !== 'number') {
-            this.contractType = 'bid'
-        }
+    async seek (
+        workDescription: string,
+        workCompletionDeadline: number,
+        bounty: number = 1
+    ): Promise<void> {
         // get your own public key
         await this.populateDerivedPublicKey()
 
         // construct the contract
+        const escrow = new EscrowContract(
+            PubKey(toByteString(this.derivedPublicKey as string)),
+            PubKey(toByteString(this.globalConfig.platformKey)),
+            BigInt(this.globalConfig.escrowServiceFeeBasisPoints),
+            this.globalConfig.platformAuthorizationRequired ? 1n : 0n,
+            toByteString(workDescription),
+            BigInt(workCompletionDeadline),
+            BigInt(this.globalConfig.minAllowableBid),
+            this.globalConfig.bountySolversNeedApproval ? 1n : 0n,
+            this.globalConfig.escrowMustBeFullyDecisive ? 1n : 0n,
+            this.globalConfig.furnisherBondingMode === 'forbidden'
+                ? EscrowContract.FURNISHER_BONDING_MODE_FORBIDDEN : this.globalConfig.furnisherBondingMode === 'optional'
+                ? EscrowContract.FURNISHER_BONDING_MODE_OPTIONAL
+                : EscrowContract.FURNISHER_BONDING_MODE_REQUIRED,
+            BigInt(this.globalConfig.requiredBondAmount),
+            BigInt(this.globalConfig.maxWorkStartDelay),
+            BigInt(this.globalConfig.maxWorkApprovalDelay),
+            this.globalConfig.delayUnit === 'blocks'
+                ? EscrowContract.DELAY_UNIT_BLOCKS
+                : EscrowContract.DELAY_UNIT_SECONDS,
+            this.globalConfig.approvalMode === 'seeker'
+                ? EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER : this.globalConfig.approvalMode === 'platform'
+                ? EscrowContract.FURNISHER_APPROVAL_MODE_PLATFORM
+                : EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER_OR_PLATFORM,
+            this.globalConfig.bountyIncreaseAllowanceMode === 'forbidden'
+                ? EscrowContract.BOUNTY_INCREASE_FORBIDDEN : this.globalConfig.bountyIncreaseAllowanceMode === 'by-seeker'
+                ? EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_SEEKER : this.globalConfig.bountyIncreaseAllowanceMode === 'by-platform'
+                ? EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_PLATFORM : this.globalConfig.bountyIncreaseAllowanceMode === 'by-seeker-or-platform'
+                ? EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_SEEKER_OR_PLATFORM
+                : EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_ANYONE,
+            this.globalConfig.bountyIncreaseCutoffPoint === 'bid-acceptance'
+                ? EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE : this.globalConfig.bountyIncreaseCutoffPoint === 'start-of-work'
+                ? EscrowContract.INCREASE_CUTOFF_START_OF_WORK : this.globalConfig.bountyIncreaseCutoffPoint === 'submission-of-work'
+                ? EscrowContract.INCREASE_CUTOFF_SUBMISSION_OF_WORK
+                : EscrowContract.INCREASE_CUTOFF_ACCEPTANCE_OF_WORK,
+            this.globalConfig.contractType === 'bid'
+                ? EscrowContract.TYPE_BID
+                : EscrowContract.TYPE_BOUNTY,
+            this.globalConfig.contractSurvivesAdverseFurnisherDisputeResolution ? 1n : 0n
+        )
+
         // If mode is bid, put 1 sat. Otherwise put the given amount
         // create the transaction
+        const { tx } = await this.wallet.createAction({
+            description: workDescription,
+            outputs: [{
+                outputDescription: 'Work completion contract',
+                satoshis: this.globalConfig.contractType === 'bounty' ? bounty : 1,
+                lockingScript: escrow.lockingScript.toHex()
+            }]
+        })
+
         // register it on the overlay
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
     async getMyOpenContracts(): Promise<Array<EscrowRecord>> {
@@ -106,7 +157,7 @@ export default class Seeker {
         if (typeof this.derivedPublicKey !== 'string') {
             const { publicKey } = await this.wallet.getPublicKey({
                 counterparty: 'self',
-                protocolID: [2, this.keyDerivationProtocol],
+                protocolID: this.globalConfig.keyDerivationProtocol,
                 keyID: '1'
             })
             this.derivedPublicKey = publicKey

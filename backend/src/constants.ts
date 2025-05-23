@@ -1,3 +1,5 @@
+import { PubKeyHex, WalletNetwork, WalletProtocol } from "@bsv/sdk"
+
 export interface Bid {
     furnisherKey: string
     plans: string
@@ -11,7 +13,6 @@ export interface EscrowRecord {
   txid: string
   outputIndex: number
   minAllowableBid: number
-  maxAllowedBids: number
   escrowServiceFeeBasisPoints: number
   platformAuthorizationRequired: boolean
   escrowMustBeFullyDecisive: boolean
@@ -26,7 +27,7 @@ export interface EscrowRecord {
   contractType: 'bid' | 'bounty'
   contractSurvivesAdverseFurnisherDisputeResolution: boolean
   bountyIncreaseAllowanceMode: 'forbidden' | 'by-seeker' | 'by-platform' | 'by-seeker-or-platform' | 'by-anyone'
-  bountyIncreaseCutoffPoint: 'bit-acceptance' | 'start-of-work' | 'submission-of-work' | 'acceptance-of-work'
+  bountyIncreaseCutoffPoint: 'bid-acceptance' | 'start-of-work' | 'submission-of-work' | 'acceptance-of-work'
   bids: Array<Bid>
   seekerKey: string
   platformKey: string
@@ -41,4 +42,34 @@ export interface EscrowRecord {
 export interface UTXOReference {
   txid: string
   outputIndex: number
+}
+
+/**
+ * This is what all parties in the system need to agree about.
+ * Potentially future versions will allow some deviations, but for now the assumption is:
+ * 1. You have a frontend with these hard-coded.
+ * 2. You are all using the same frontend.
+ * 3. Any deviations from these rules are invalid.
+ */
+export interface GlobalConfig {
+  minAllowableBid: number
+  escrowServiceFeeBasisPoints: number
+  platformAuthorizationRequired: boolean
+  escrowMustBeFullyDecisive: boolean
+  bountySolversNeedApproval: boolean
+  furnisherBondingMode: 'forbidden' | 'optional' | 'required'
+  requiredBondAmount: number
+  maxWorkStartDelay: number
+  maxWorkApprovalDelay: number
+  delayUnit: 'blocks' | 'seconds'
+  approvalMode: 'seeker' | 'platform' | 'seeker-or-platform'
+  contractType: 'bid' | 'bounty'
+  contractSurvivesAdverseFurnisherDisputeResolution: boolean
+  bountyIncreaseAllowanceMode: 'forbidden' | 'by-seeker' | 'by-platform' | 'by-seeker-or-platform' | 'by-anyone'
+  bountyIncreaseCutoffPoint: 'bid-acceptance' | 'start-of-work' | 'submission-of-work' | 'acceptance-of-work'
+  platformKey: PubKeyHex
+  topic: string
+  service: string
+  keyDerivationProtocol: WalletProtocol
+  network: WalletNetwork
 }
