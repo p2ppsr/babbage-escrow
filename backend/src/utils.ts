@@ -1,7 +1,7 @@
 import { BEEF, CreateActionOutput, LockingScript, LookupAnswer, OutpointString, PrivateKey, Transaction, TransactionSignature, WalletClient, WalletInterface } from "@bsv/sdk"
 import { EscrowRecord, EscrowTX, GlobalConfig } from "./constants.js"
 import { EscrowContract } from "./contracts/Escrow.js"
-import { assert, PubKey, Sig, SmartContract, toByteString } from "scrypt-ts"
+import { assert, fill, PubKey, Sig, SmartContract, toByteString } from "scrypt-ts"
 
 export const recordFromContract = (txid: string, outputIndex: number, escrow: EscrowContract): EscrowRecord => ({
     txid,
@@ -97,7 +97,7 @@ export const contractFromGlobalConfigAndParams = (config: GlobalConfig, seekerKe
         PubKey(toByteString(config.platformKey)),
         BigInt(config.escrowServiceFeeBasisPoints),
         config.platformAuthorizationRequired ? 1n : 0n,
-        toByteString(workDescription),
+        toByteString(workDescription, true),
         BigInt(workCompletionDeadline),
         BigInt(config.minAllowableBid),
         config.bountySolversNeedApproval ? 1n : 0n,
@@ -130,7 +130,15 @@ export const contractFromGlobalConfigAndParams = (config: GlobalConfig, seekerKe
         config.contractType === 'bid'
             ? EscrowContract.TYPE_BID
             : EscrowContract.TYPE_BOUNTY,
-        config.contractSurvivesAdverseFurnisherDisputeResolution ? 1n : 0n
+        config.contractSurvivesAdverseFurnisherDisputeResolution ? 1n : 0n,
+        fill({
+            furnisherKey: PubKey(toByteString(seekerKey)),
+            plans: '',
+            timeOfBid: 0n,
+            bond: 0n,
+            bidAmount: 0n,
+            timeRequired: 0n
+        }, 4)
     )
 }
 

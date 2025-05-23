@@ -1,4 +1,4 @@
-import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver, Transaction, TransactionSignature, Signature, Utils } from '@bsv/sdk'
+import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver, Transaction, TransactionSignature, Signature, Utils, Broadcaster } from '@bsv/sdk'
 import type { EscrowTX,  GlobalConfig } from '../constants.js'
 import { callContractMethod, contractFromGlobalConfigAndParams, recordsFromAnswer } from '../utils.js'
 import { bsv, PubKey, Sig, toByteString } from 'scrypt-ts'
@@ -8,13 +8,20 @@ EscrowContract.loadArtifact(escrowArtifact)
 
 export default class Seeker {
     private derivedPublicKey: string | null = null
+    private broadcaster: Broadcaster
 
     constructor (
         private readonly globalConfig: GlobalConfig,
         private readonly wallet: WalletInterface = new WalletClient('auto', 'localhost'),
-        private readonly broadcaster: TopicBroadcaster = new TopicBroadcaster([this.globalConfig.topic]),
+        broadcaster: TopicBroadcaster | 'DEFAULT' = 'DEFAULT',
         private readonly resolver: LookupResolver = new LookupResolver()
-    ) {}
+    ) {
+        if (broadcaster === 'DEFAULT') {
+            this.broadcaster = new TopicBroadcaster([globalConfig.topic])
+        } else {
+            this.broadcaster = broadcaster
+        }
+    }
 
     async seek (
         workDescription: string,
@@ -28,6 +35,7 @@ export default class Seeker {
             workDescription,
             workCompletionDeadline
         )
+        console.log('YAY!', escrow)
         const { tx } = await this.wallet.createAction({
             description: workDescription,
             outputs: [{

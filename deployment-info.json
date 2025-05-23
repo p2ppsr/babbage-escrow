@@ -10,6 +10,10 @@
       "hydrateWith": "mongo"
     }
   },
+  "frontend": {
+    "language": "react",
+    "sourceDirectory": "./frontend"
+  },
   "contracts": {
     "language": "sCrypt",
     "baseDirectory": "./backend"
@@ -20,7 +24,8 @@
       "network": "mainnet",
       "provider": "LARS",
       "run": [
-        "backend"
+        "backend",
+        "frontend"
       ]
     },
     {
@@ -30,8 +35,10 @@
       "projectID": "161a4f0f091010a0f8a34a5d1d1b9dd7",
       "network": "mainnet",
       "deploy": [
-        "backend"
-      ]
+        "backend",
+        "frontend"
+      ],
+      "frontendHostingMethod": "HTTPS"
     }
   ]
 }
