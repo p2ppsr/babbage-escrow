@@ -10,7 +10,6 @@ struct Bid {
 
 contract EscrowContract {
   @state int minAllowableBid;
-  @state int maxAllowedBids;
   @state int escrowServiceFeeBasisPoints;
   @state int platformAuthorizationRequired;
   @state int escrowMustBeFullyDecisive;
@@ -39,7 +38,7 @@ contract EscrowContract {
   int __scrypt_ts_ctx_locktime;
   int __scrypt_ts_ctx_sequence;
   int __scrypt_ts_ctx_value;
-  constructor(PubKey seekerKey, PubKey platformKey, int escrowServiceFeeBasisPoints, int platformAuthorizationRequired, bytes workDescription, int workCompletionDeadline, int minAllowableBid, int maxAllowedBids, int bountySolversNeedApproval, int escrowMustBeFullyDecisive, int furnisherBondingMode, int requiredBondAmount, int maxWorkStartDelay, int maxWorkApprovalDelay, int delayUnit, int approvalMode, int bountyIncreaseAllowanceMode, int bountyIncreaseCutoffPoint, int contractType, int contractSurvivesAdverseFurnisherDisputeResolution, Bid[4] bids) {
+  constructor(PubKey seekerKey, PubKey platformKey, int escrowServiceFeeBasisPoints, int platformAuthorizationRequired, bytes workDescription, int workCompletionDeadline, int minAllowableBid, int bountySolversNeedApproval, int escrowMustBeFullyDecisive, int furnisherBondingMode, int requiredBondAmount, int maxWorkStartDelay, int maxWorkApprovalDelay, int delayUnit, int approvalMode, int bountyIncreaseAllowanceMode, int bountyIncreaseCutoffPoint, int contractType, int contractSurvivesAdverseFurnisherDisputeResolution, Bid[4] bids) {
     this.seekerKey = seekerKey;
     this.platformKey = platformKey;
     this.escrowServiceFeeBasisPoints = escrowServiceFeeBasisPoints;
@@ -47,7 +46,6 @@ contract EscrowContract {
     this.workDescription = workDescription;
     this.workCompletionDeadline = workCompletionDeadline;
     this.minAllowableBid = minAllowableBid;
-    this.maxAllowedBids = maxAllowedBids;
     this.bountySolversNeedApproval = bountySolversNeedApproval;
     this.escrowMustBeFullyDecisive = escrowMustBeFullyDecisive;
     this.furnisherBondingMode = furnisherBondingMode;
