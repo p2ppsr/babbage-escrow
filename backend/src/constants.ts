@@ -1,4 +1,5 @@
-import { PubKeyHex, WalletNetwork, WalletProtocol } from "@bsv/sdk"
+import { BEEF, PubKeyHex, WalletNetwork, WalletProtocol } from "@bsv/sdk"
+import { EscrowContract } from "mod.js"
 
 export interface Bid {
     furnisherKey: string
@@ -37,6 +38,14 @@ export interface EscrowRecord {
   status: 'initial' | 'bid-accepted' | 'work-started' | 'work-submitted' | 'resolved' | 'disputed-by-seeker' | 'disputed-by-furnisher'
   workDescription: string
   workCompletionDescription: string
+}
+
+export interface EscrowTX {
+  record: EscrowRecord,
+  contract: EscrowContract,
+  beef: BEEF,
+  script: string,
+  satoshis: number
 }
 
 export interface UTXOReference {

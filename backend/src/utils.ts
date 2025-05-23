@@ -1,5 +1,7 @@
-import { EscrowRecord } from "./constants.js"
+import { BEEF, CreateActionOutput, LockingScript, LookupAnswer, OutpointString, PrivateKey, Transaction, TransactionSignature, WalletClient, WalletInterface } from "@bsv/sdk"
+import { EscrowRecord, EscrowTX, GlobalConfig } from "./constants.js"
 import { EscrowContract } from "./contracts/Escrow.js"
+import { assert, PubKey, Sig, SmartContract, toByteString } from "scrypt-ts"
 
 export const recordFromContract = (txid: string, outputIndex: number, escrow: EscrowContract): EscrowRecord => ({
     txid,
@@ -67,3 +69,154 @@ export const recordFromContract = (txid: string, outputIndex: number, escrow: Es
     workDescription: escrow.workDescription.toString(),
     workCompletionDescription: escrow.workCompletionDescription.toString()
 })
+
+export const recordsFromAnswer = (answer: LookupAnswer): Array<EscrowTX> => {
+    if (answer.type !== 'output-list') throw new Error('Answer must be output-list')
+    const results: Array<EscrowTX> = []
+    for (const o of answer.outputs) {
+        try {
+            const tx = Transaction.fromBEEF(o.beef)
+            const script = tx.outputs[o.outputIndex].lockingScript.toHex()
+            const satoshis = tx.outputs[o.outputIndex].satoshis as number
+            const escrow = EscrowContract.fromLockingScript(script) as EscrowContract
+            results.push({
+                record: recordFromContract(tx.id('hex'), o.outputIndex, escrow),
+                contract: escrow,
+                script,
+                satoshis,
+                beef: o.beef
+            })
+        } catch (e) {}
+    }
+    return results
+}
+
+export const contractFromGlobalConfigAndParams = (config: GlobalConfig, seekerKey: string, workDescription: string, workCompletionDeadline: number): EscrowContract => {
+    return new EscrowContract(
+        PubKey(toByteString(seekerKey)),
+        PubKey(toByteString(config.platformKey)),
+        BigInt(config.escrowServiceFeeBasisPoints),
+        config.platformAuthorizationRequired ? 1n : 0n,
+        toByteString(workDescription),
+        BigInt(workCompletionDeadline),
+        BigInt(config.minAllowableBid),
+        config.bountySolversNeedApproval ? 1n : 0n,
+        config.escrowMustBeFullyDecisive ? 1n : 0n,
+        config.furnisherBondingMode === 'forbidden'
+            ? EscrowContract.FURNISHER_BONDING_MODE_FORBIDDEN : config.furnisherBondingMode === 'optional'
+            ? EscrowContract.FURNISHER_BONDING_MODE_OPTIONAL
+            : EscrowContract.FURNISHER_BONDING_MODE_REQUIRED,
+        BigInt(config.requiredBondAmount),
+        BigInt(config.maxWorkStartDelay),
+        BigInt(config.maxWorkApprovalDelay),
+        config.delayUnit === 'blocks'
+            ? EscrowContract.DELAY_UNIT_BLOCKS
+            : EscrowContract.DELAY_UNIT_SECONDS,
+        config.approvalMode === 'seeker'
+            ? EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER : config.approvalMode === 'platform'
+            ? EscrowContract.FURNISHER_APPROVAL_MODE_PLATFORM
+            : EscrowContract.FURNISHER_APPROVAL_MODE_SEEKER_OR_PLATFORM,
+        config.bountyIncreaseAllowanceMode === 'forbidden'
+            ? EscrowContract.BOUNTY_INCREASE_FORBIDDEN : config.bountyIncreaseAllowanceMode === 'by-seeker'
+            ? EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_SEEKER : config.bountyIncreaseAllowanceMode === 'by-platform'
+            ? EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_PLATFORM : config.bountyIncreaseAllowanceMode === 'by-seeker-or-platform'
+            ? EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_SEEKER_OR_PLATFORM
+            : EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_ANYONE,
+        config.bountyIncreaseCutoffPoint === 'bid-acceptance'
+            ? EscrowContract.INCREASE_CUTOFF_BID_ACCEPTANCE : config.bountyIncreaseCutoffPoint === 'start-of-work'
+            ? EscrowContract.INCREASE_CUTOFF_START_OF_WORK : config.bountyIncreaseCutoffPoint === 'submission-of-work'
+            ? EscrowContract.INCREASE_CUTOFF_SUBMISSION_OF_WORK
+            : EscrowContract.INCREASE_CUTOFF_ACCEPTANCE_OF_WORK,
+        config.contractType === 'bid'
+            ? EscrowContract.TYPE_BID
+            : EscrowContract.TYPE_BOUNTY,
+        config.contractSurvivesAdverseFurnisherDisputeResolution ? 1n : 0n
+    )
+}
+
+export const callContractMethod = async (
+    wallet: WalletInterface,
+    escrow: EscrowTX,
+    methodName: string,
+    params: Array<any>,
+    nextOutputAmount?: number,
+    otherOutputs?: Array<CreateActionOutput>,
+    sequenceNumber: number = 0xffffffff,
+    lockTime: number = 0,
+    unlockingScriptLength = 400000
+) => {
+    // Compute blank signatures for use at first until signatories are called
+    const blankSig = Sig(toByteString(new PrivateKey(1).sign([]).toString() as string))
+    const blankedParams = params.map((x) => typeof x === 'function' || x === 'WONTSIGN' ? blankSig : x)
+
+    // Disable assertions to get the next locking script
+    const realAssert = assert;
+    (assert as unknown) = () => true
+    const nextLockingScript = (escrow.contract as any).clone()[methodName](...blankedParams).lockingScript;
+    (assert as unknown) = realAssert
+
+    // Get a signable transaction we can work with
+    const { signableTransaction } = await wallet.createAction({
+        description: 'Update contract',
+        inputBEEF: escrow.beef,
+        inputs: [{
+            outpoint: `${escrow.record.txid}.${escrow.record.outputIndex}`,
+            unlockingScriptLength,
+            sequenceNumber,
+            inputDescription: 'Redeem old contract'
+        }],
+        outputs: typeof nextOutputAmount === 'number' ? [{
+            satoshis: nextOutputAmount,
+            lockingScript: nextLockingScript,
+            outputDescription: 'New contract output'
+        }, ...(otherOutputs || [])] : otherOutputs,
+        lockTime,
+        options: {
+            randomizeOutputs: false,
+            acceptDelayedBroadcast: false
+        }
+    })
+
+    // The preimage we'll sign depends on the hash type
+    const scope = escrow.contract.sigTypeOfMethod(methodName)
+    const partialTX = Transaction.fromAtomicBEEF(signableTransaction!.tx)
+    const preimage = TransactionSignature.format({
+        sourceTXID: escrow.record.txid,
+        sourceOutputIndex: escrow.record.outputIndex,
+        sourceSatoshis: escrow.satoshis,
+        transactionVersion: partialTX.version,
+        otherInputs: partialTX.inputs.splice(0, 1),
+        inputIndex: 0,
+        inputSequence: partialTX.inputs[0].sequence!,
+        outputs: partialTX.outputs,
+        subscript: LockingScript.fromHex(escrow.script),
+        lockTime: partialTX.lockTime,
+        scope
+    })
+
+    // Obtain signatures from all signatories
+    const hydratedParams = await Promise.all(params.map(async p => {
+        if (p === 'WONTSIGN') return blankSig
+        if (typeof p !== 'function') return p
+        return await p(preimage, scope)
+    }))
+
+    // Obtain an unlocking script
+    const unlockingScript = escrow.contract.getUnlockingScript((self) => {
+        (self as any)[methodName](...hydratedParams)
+    }).toHex()
+
+    // Complete the transaction
+    return wallet.signAction({
+        reference: signableTransaction!.reference,
+        spends: {
+            0: {
+                unlockingScript,
+                sequenceNumber
+            }
+        },
+        options: {
+            acceptDelayedBroadcast: false
+        }
+    })
+}
