@@ -80,5 +80,5 @@ export interface GlobalConfig {
   topic: string
   service: string
   keyDerivationProtocol: WalletProtocol
-  network: WalletNetwork
+  networkPreset: 'mainnet' | 'testnet' | 'local'
 }

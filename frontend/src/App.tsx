@@ -23,7 +23,7 @@ const config: GlobalConfig = {
   topic: 'tm_escrow',
   service: 'ls_escrow',
   keyDerivationProtocol: [2, 'escrow'],
-  network: 'mainnet'
+  networkPreset: 'local'
 }
 
 const wallet = new WalletClient()

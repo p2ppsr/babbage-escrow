@@ -9,17 +9,27 @@ EscrowContract.loadArtifact(escrowArtifact)
 export default class Seeker {
     private derivedPublicKey: string | null = null
     private broadcaster: Broadcaster
+    private resolver: LookupResolver
 
     constructor (
         private readonly globalConfig: GlobalConfig,
         private readonly wallet: WalletInterface = new WalletClient('auto', 'localhost'),
         broadcaster: TopicBroadcaster | 'DEFAULT' = 'DEFAULT',
-        private readonly resolver: LookupResolver = new LookupResolver()
+        resolver: LookupResolver | 'DEFAULT' = 'DEFAULT',
     ) {
         if (broadcaster === 'DEFAULT') {
-            this.broadcaster = new TopicBroadcaster([globalConfig.topic])
+            this.broadcaster = new TopicBroadcaster([globalConfig.topic], {
+                networkPreset: globalConfig.networkPreset
+            })
         } else {
             this.broadcaster = broadcaster
+        }
+        if (resolver === 'DEFAULT') {
+            this.resolver = new LookupResolver({
+                networkPreset: globalConfig.networkPreset
+            })
+        } else {
+            this.resolver = resolver
         }
     }
 
