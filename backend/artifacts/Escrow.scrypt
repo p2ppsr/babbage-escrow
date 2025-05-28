@@ -65,7 +65,7 @@ contract EscrowContract {
     this.workCompletionTime = 0;
     this.workCompletionDescription = b'';
   }
-  public function seekerCancelsBeforeAccept(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  public function seekerCancelsBeforeAcceptOnChain(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -74,7 +74,10 @@ contract EscrowContract {
     require(this.status == 11);
     require(checkSig(seekerSig, this.seekerKey));
   }
-  public function increaseBounty(int mode, int amount, Sig sig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function seekerCancelsBeforeAccept(Sig seekerSig) : bool {
+    return true;
+  }
+  public function increaseBountyOnChain(int mode, int amount, Sig sig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -103,6 +106,9 @@ contract EscrowContract {
         require(checkSig(sig, this.platformKey));
       }
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + amount)));
+  }
+  function increaseBounty(int mode, int amount, Sig sig) : bool {
+    return true;
   }
   public function seekerExtendsWorkDeadline(Sig seekerSig, int extension, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));

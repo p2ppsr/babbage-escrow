@@ -4,7 +4,7 @@
   "scryptfile": "Escrow.scrypt",
   "sourceMapFile": "Escrow.scrypt.map",
   "ctxMethods": [
-    "increaseBounty",
+    "increaseBountyOnChain",
     "seekerExtendsWorkDeadline",
     "furnisherPlacesBid",
     "acceptBid",

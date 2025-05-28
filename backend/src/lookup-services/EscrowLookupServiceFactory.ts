@@ -31,7 +31,7 @@ class EscrowLookupService implements LookupService {
   async outputAdmittedByTopic(payload: OutputAdmittedByTopic): Promise<void> {
     if (payload.mode !== 'locking-script') throw new Error('Invalid payload')
     const { topic, txid, outputIndex, lockingScript } = payload
-    if (topic !== 'tm_meter') return
+    if (topic !== 'tm_escrow') return
     try {
       // Decode the Escrow token fields from the Bitcoin outputScript with the contract class
       const escrow = EscrowContract.fromLockingScript(
@@ -49,7 +49,7 @@ class EscrowLookupService implements LookupService {
   async outputSpent(payload: OutputSpent): Promise<void> {
     if (payload.mode !== 'none') throw new Error('Invalid payload')
     const { topic, txid, outputIndex } = payload
-    if (topic !== 'tm_meter') return
+    if (topic !== 'tm_escrow') return
     await this.storage.deleteRecord(txid, outputIndex)
   }
 
@@ -66,18 +66,18 @@ class EscrowLookupService implements LookupService {
     if (question.query === undefined || question.query === null) {
       throw new Error('A valid query must be provided!')
     }
-    if (question.service !== 'ls_meter') {
+    if (question.service !== 'ls_escrow') {
       throw new Error('Lookup service not supported!')
     }
+    return await this.storage.findAll()
 
-    const query = question.query as {
-      findAll?: boolean
-    }
-    if (query.findAll) {
-      return await this.storage.findAll()
-    }
-    const mess = JSON.stringify(question, null, 2)
-    throw new Error(`question.query:${mess}}`)
+    // const query = question.query as {
+    //   findAll?: boolean
+    // }
+    // if (query.findAll) {
+    // }
+    // const mess = JSON.stringify(question, null, 2)
+    // throw new Error(`question.query:${mess}}`)
   }
 
   async getDocumentation(): Promise<string> {

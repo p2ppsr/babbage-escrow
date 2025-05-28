@@ -20,6 +20,7 @@ export class EscrowStorage {
    * @param {string} value - meter value to save
    */
   async storeRecord(record: EscrowRecord): Promise<void> {
+    console.log('STORING', record)
     await this.records.insertOne(record)
   }
 
@@ -37,6 +38,7 @@ export class EscrowStorage {
    * @returns {Promise<UTXOReference[]>} returns matching UTXO references
    */
   async findAll(): Promise<UTXOReference[]> {
+    console.log('Finding All')
     return await this.records.find({})
       .project<UTXOReference>({ txid: 1, outputIndex: 1 })
       .toArray()

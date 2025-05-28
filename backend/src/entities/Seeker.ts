@@ -150,12 +150,12 @@ export default class Seeker {
     }
 
     private signatory() {
-        return async (preimage: number[], scope: number): Promise<Sig> => {
+        return async (preimageHash: number[], scope: number): Promise<Sig> => {
             const { signature } = await this.wallet.createSignature({
                 protocolID: this.globalConfig.keyDerivationProtocol,
                 keyID: '1',
                 counterparty: 'self',
-                data: preimage
+                data: preimageHash
             })
             const rawSignature = Signature.fromDER(signature)
             const txSig = new TransactionSignature(rawSignature.r, rawSignature.s, scope)

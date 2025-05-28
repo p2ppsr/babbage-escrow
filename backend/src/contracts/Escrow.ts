@@ -222,13 +222,17 @@ export class EscrowContract extends SmartContract {
     }
 
     @method()
-    public seekerCancelsBeforeAccept(seekerSig: Sig) {
+    public seekerCancelsBeforeAcceptOnChain(seekerSig: Sig) {
         assert(this.status === EscrowContract.STATUS_INITIAL, "Contract must be in the initial state for a seeker to cancel")
         assert(this.checkSig(seekerSig, this.seekerKey), "Seeker must sign contract cancellation")
     }
 
+    @method()
+    seekerCancelsBeforeAccept(seekerSig: Sig): void {
+    }
+
     @method(SigHash.ANYONECANPAY_SINGLE)
-    public increaseBounty(mode: bigint, amount: bigint, sig: Sig) {
+    public increaseBountyOnChain(mode: bigint, amount: bigint, sig: Sig) {
         assert(amount > 0n)
         assert(this.contractType === EscrowContract.TYPE_BOUNTY)
         assert(this.bountyIncreaseAllowanceMode !== EscrowContract.BOUNTY_INCREASE_FORBIDDEN)
@@ -269,6 +273,10 @@ export class EscrowContract extends SmartContract {
             assert(this.checkSig(sig, this.platformKey), 'Platform must sign to increase bounty')
         }
         assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + amount)))
+    }
+
+    @method()
+    increaseBounty(mode: bigint, amount: bigint, sig: Sig): void {
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)
