@@ -2,8 +2,9 @@ import { CreateActionOutput, LockingScript, LookupAnswer, PrivateKey, Transactio
 import { EscrowRecord, EscrowTX, GlobalConfig } from "./constants.js"
 import { EscrowContract } from "./contracts/Escrow.js"
 import { bsv, fill, PubKey, Sig, SmartContract, toByteString } from "scrypt-ts"
-import * as sCrypt from 'scrypt-ts'
 import { sha256 } from "@bsv/sdk/primitives/Hash"
+
+const blankSig = Sig(toByteString(new PrivateKey(1).sign([]).toDER('hex') as string))
 
 export const recordFromContract = (txid: string, outputIndex: number, escrow: EscrowContract): EscrowRecord => ({
     txid,
@@ -153,10 +154,9 @@ export const callContractMethod = async (
     otherOutputs?: Array<CreateActionOutput>,
     sequenceNumber: number = 0xffffffff,
     lockTime: number = 0,
-    unlockingScriptLength = 400000
+    unlockingScriptLength = 1200000
 ) => {
     // Compute blank signatures for use at first until signatories are called
-    const blankSig = Sig(toByteString(new PrivateKey(1).sign([]).toDER('hex') as string))
     const blankedParams = params.map((x) => typeof x === 'function' || x === 'WONTSIGN' ? blankSig : x)
 
     escrow.contract.to = {
@@ -201,7 +201,7 @@ export const callContractMethod = async (
     })
 
     // The preimage we'll sign depends on the hash type
-    const scope = escrow.contract.sigTypeOfMethod(methodName)
+    const scope = escrow.contract.sigTypeOfMethod(`${methodName}OnChain`)
     const partialTX = Transaction.fromAtomicBEEF(signableTransaction!.tx)
     const otherInputs = [...partialTX.inputs]
     otherInputs.splice(0, 1)
@@ -218,9 +218,7 @@ export const callContractMethod = async (
         lockTime: partialTX.lockTime,
         scope
     }
-    console.log('formatParams', formatParams)
     const preimage = TransactionSignature.format(formatParams)
-    console.log('preimage', preimage)
     const preimageHash = sha256(preimage)
 
     // Obtain signatures from all signatories
@@ -229,7 +227,6 @@ export const callContractMethod = async (
         if (typeof p !== 'function') return p
         return await p(preimageHash, scope)
     }))
-    console.log('hydrated', hydratedParams)
 
     const tx = new bsv.Transaction(partialTX.toHex())
     for (let i = 0; i < tx.inputs.length; i++) {
@@ -238,21 +235,18 @@ export const callContractMethod = async (
             satoshis: partialTX.inputs[i].sourceTransaction!.outputs[partialTX.inputs[i].sourceOutputIndex].satoshis as number
         })
     }
-    console.log('decoded', partialTX.toHex())
     escrow.contract.to = {
         tx,
         inputIndex: 0
     }
-    console.log('past')
 
     // Obtain an unlocking script
     const unlockingScript = escrow.contract.getUnlockingScript((self) => {
         (self as any)[`${methodName}OnChain`](...hydratedParams)
     }).toHex()
-    console.log('US', unlockingScript)
 
     // Complete the transaction
-    return wallet.signAction({
+    return await wallet.signAction({
         reference: signableTransaction!.reference,
         spends: {
             0: {

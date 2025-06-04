@@ -33,7 +33,7 @@ const App = () => {
   const handleClick = async () => {
     const seeker = new Seeker(config, wallet)
     console.log(seeker)
-    // await seeker.seek('I want 1 Starlink terminal installation service installed on the roof @ the Babbage Medford HQ', 1000000)
+    // await seeker.seek('I want 1 Starlink terminal installation service installed on the roof @ the Babbage Medford HQ', 950000)
     const list = await seeker.getMyOpenContracts()
     console.log(list)
     await seeker.cancelBeforeAccept(list[0])

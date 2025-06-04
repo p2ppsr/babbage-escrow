@@ -1,25 +1,49 @@
-import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver } from '@bsv/sdk'
-import type { EscrowRecord } from '../constants.js'
+import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver, Broadcaster } from '@bsv/sdk'
+import type { EscrowTX, GlobalConfig } from '../constants.js'
+import { recordsFromAnswer } from '../utils.js'
 
 export default class Furnisher {
     private derivedPublicKey: string | null = null
+    private broadcaster: Broadcaster
+    private resolver: LookupResolver
 
     constructor (
+        private readonly globalConfig: GlobalConfig,
         private readonly wallet: WalletInterface = new WalletClient('auto', 'localhost'),
-        private readonly topic: string = 'tm_escrow',
-        private readonly broadcaster: TopicBroadcaster = new TopicBroadcaster([this.topic]),
-        private readonly service: string = 'ls_escrow',
-        private readonly resolver: LookupResolver = new LookupResolver(),
-        private readonly keyDerivationProtocol = 'escrow'
+        broadcaster: TopicBroadcaster | 'DEFAULT' = 'DEFAULT',
+        resolver: LookupResolver | 'DEFAULT' = 'DEFAULT',
     ) {
+        if (broadcaster === 'DEFAULT') {
+            this.broadcaster = new TopicBroadcaster([globalConfig.topic], {
+                networkPreset: globalConfig.networkPreset
+            })
+        } else {
+            this.broadcaster = broadcaster
+        }
+        if (resolver === 'DEFAULT') {
+            this.resolver = new LookupResolver({
+                networkPreset: globalConfig.networkPreset
+            })
+        } else {
+            this.resolver = resolver
+        }
     }
 
-    listAvailableWork() {
-        // Query overlay
+    async listAvailableWork() {
+        await this.populateDerivedPublicKey()
+        const answer = await this.resolver.query({
+            service: this.globalConfig.service,
+            query: {
+                globalConfig: this.globalConfig,
+
+                find: 'all-open'
+            }
+        })
+        return recordsFromAnswer(answer)
         // Potentially filter by work type in the future
     }
 
-    async placeBid(record: EscrowRecord, amount: number, plans: number[], bond: number) {
+    async placeBid(record: EscrowTX, amount: number, plans: number[], bond: number) {
         await this.populateDerivedPublicKey()
         // Verify state is initial
         // Append our bid to the lisst
@@ -28,7 +52,7 @@ export default class Furnisher {
         // register with overlay
     }
 
-    async startWork(record: EscrowRecord) {
+    async startWork(record: EscrowTX) {
         await this.populateDerivedPublicKey
         // Verify the state is accepted-bid
         // Verify the furnisher key is our key
@@ -36,7 +60,7 @@ export default class Furnisher {
         // Register updated TX with overlay
     }
 
-    async completeWork(record: EscrowRecord, workCompletionDescriptor: number[]) {
+    async completeWork(record: EscrowTX, workCompletionDescriptor: number[]) {
         // Verify the state is active-work
         // Verify the furnisher key is our key
         // State goes to submitted-work
@@ -45,13 +69,13 @@ export default class Furnisher {
         // Update the UTXO on the overlay
     }
 
-    async claimBounty (entity: EscrowRecord) {
+    async claimBounty (entity: EscrowTX) {
          // Verify the state is resolved
         // Verify the furnisher key is our key
         // spend the UTXO into our balance
     }
 
-    async raiseDispute(record: EscrowRecord) {
+    async raiseDispute(record: EscrowTX) {
         // Verify state is submitted-work with our key
         // Verify seeker payout approval time has elapsed
         // State goes to furnisher-dispute
@@ -66,7 +90,7 @@ export default class Furnisher {
         // Records of past disputes are stored in local baskets
     }
 
-    async claimAfterDispute(record: EscrowRecord) {
+    async claimAfterDispute(record: EscrowTX) {
         // List messages in disputes message box
         // Internalize any payouts to the wallet
         // Make record of a dispute by keeping a new PushDrop in a basket

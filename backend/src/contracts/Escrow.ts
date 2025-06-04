@@ -227,10 +227,6 @@ export class EscrowContract extends SmartContract {
         assert(this.checkSig(seekerSig, this.seekerKey), "Seeker must sign contract cancellation")
     }
 
-    @method()
-    seekerCancelsBeforeAccept(seekerSig: Sig): void {
-    }
-
     @method(SigHash.ANYONECANPAY_SINGLE)
     public increaseBountyOnChain(mode: bigint, amount: bigint, sig: Sig) {
         assert(amount > 0n)
@@ -273,10 +269,6 @@ export class EscrowContract extends SmartContract {
             assert(this.checkSig(sig, this.platformKey), 'Platform must sign to increase bounty')
         }
         assert(this.ctx.hashOutputs === hash256(this.buildStateOutput(this.ctx.utxo.value + amount)))
-    }
-
-    @method()
-    increaseBounty(mode: bigint, amount: bigint, sig: Sig): void {
     }
 
     @method(SigHash.ANYONECANPAY_SINGLE)

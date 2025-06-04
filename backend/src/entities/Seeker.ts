@@ -45,7 +45,6 @@ export default class Seeker {
             workDescription,
             workCompletionDeadline
         )
-        console.log('YAY!', escrow)
         const { tx } = await this.wallet.createAction({
             description: workDescription,
             outputs: [{
@@ -75,44 +74,70 @@ export default class Seeker {
             this.wallet,
             escrow,
             'seekerCancelsBeforeAccept',
-            [this.signatory()],
-            escrow.satoshis
+            [this.signatory()]
         )
         await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async increaseBounty(record: EscrowTX, increaseBy: number) {
-        // Verify contract is bounty and in initial state
-        // Spend the old UTXO
-        // Register transaction with overlay
+    async increaseBounty(escrow: EscrowTX, increaseBy: number) {
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'increaseBounty',
+            [EscrowContract.BOUNTY_INCREASE_ALLOWED_BY_SEEKER, BigInt(increaseBy), this.signatory()],
+            escrow.satoshis = increaseBy
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async approveBid(record: EscrowTX, bidIndex: number) {
-        // Ensure type is bid and state is initial
-        // Ensure bid not out of range
-        // Set bidder key as furnisher
-        // Set state to active-work
-        // Replace UTXO, putting up the money
-        // Register with overlay
+    async acceptBid(escrow: EscrowTX, bidIndex: number) {
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'acceptBid',
+            [EscrowContract.BID_ACCEPTED_BY_SEEKER, this.signatory(), BigInt(bidIndex)],
+            escrow.contract.contractType === EscrowContract.TYPE_BID
+                ? Number(escrow.contract.bids[bidIndex].bidAmount)
+                : escrow.satoshis
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async approveBountySolver(record: EscrowTX, bidIndex: number) {
-        // no need to put up the money (it's already there)
-        // verify bidder key is in range
-        // Set bidder key as furnisher
-        // Set state to active-work
-        // Replace UTXO, updating overlay
+    async cancelBidApprovalAfterDelay(escrow: EscrowTX) {
+        let lockTime
+        if (this.globalConfig.delayUnit === 'blocks') {
+            const { height } = await this.wallet.getHeight({})
+            lockTime = height
+        } else {
+            lockTime = Math.floor(Date.now() / 1000)
+        }
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'withdrawBidAcceptance',
+            [
+                this.signatory(),
+                escrow.contract.bids.findIndex(x => (
+                    x.furnisherKey === escrow.contract.acceptedBid.furnisherKey && x.plans === escrow.contract.acceptedBid.plans
+                ))
+            ],
+            escrow.contract.contractType === EscrowContract.TYPE_BID ? 1 : escrow.satoshis,
+            [],
+            0xffffffe,
+            lockTime
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async cancelBidApprovalAfterDelay(record: EscrowTX) {
-        // Verify the state is bid-accepted
-        // State goes back to initial
-    }
-
-    async approveCompletedWork(record: EscrowTX) {
-        // Verify the state is submitted-work
-        // Sign, state goes to resolved
-        // Update overlay
+    async approveCompletedWork(escrow: EscrowTX) {
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'seekerApprovesWork',
+            [this.signatory()],
+            escrow.satoshis
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
     async disputeWork(record: EscrowTX, evidence?: number[]) {
