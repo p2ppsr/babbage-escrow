@@ -125,7 +125,7 @@ export default class Furnisher {
         if (typeof this.derivedPublicKey !== 'string') {
             const { publicKey } = await this.wallet.getPublicKey({
                 counterparty: 'self',
-                protocolID: [2, this.keyDerivationProtocol],
+                protocolID: this.globalConfig.keyDerivationProtocol,
                 keyID: '1'
             })
             this.derivedPublicKey = publicKey
