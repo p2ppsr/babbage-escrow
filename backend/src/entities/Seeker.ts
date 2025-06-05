@@ -104,13 +104,7 @@ export default class Seeker {
     }
 
     async cancelBidApprovalAfterDelay(escrow: EscrowTX) {
-        let lockTime
-        if (this.globalConfig.delayUnit === 'blocks') {
-            const { height } = await this.wallet.getHeight({})
-            lockTime = height
-        } else {
-            lockTime = Math.floor(Date.now() / 1000)
-        }
+        const lockTime = await this.getCurrentLockTime()
         const { tx } = await callContractMethod(
             this.wallet,
             escrow,
@@ -185,6 +179,15 @@ export default class Seeker {
             const rawSignature = Signature.fromDER(signature)
             const txSig = new TransactionSignature(rawSignature.r, rawSignature.s, scope)
             return Sig(toByteString(Utils.toHex(txSig.toChecksigFormat())))
+        }
+    }
+
+    async getCurrentLockTime(): Promise<number> {
+        if (this.globalConfig.delayUnit === 'blocks') {
+            const { height } = await this.wallet.getHeight({})
+            return height
+        } else {
+            return Math.floor(Date.now() / 1000)
         }
     }
 }

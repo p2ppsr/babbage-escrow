@@ -5,17 +5,17 @@
   "sourceMapFile": "Escrow.scrypt.map",
   "ctxMethods": [
     "increaseBountyOnChain",
-    "seekerExtendsWorkDeadline",
-    "furnisherPlacesBid",
-    "acceptBid",
-    "withdrawBidAcceptance",
-    "rejectBid",
-    "furnisherStartsWork",
-    "furnisherStartsWorkWithPlatformAuthorization",
-    "seekerRaisesDispute",
-    "furnisherRaisesDispute",
-    "furnisherSubmitsWork",
-    "seekerApprovesWork",
-    "resolveDispute"
+    "seekerExtendsWorkDeadlineOnChain",
+    "furnisherPlacesBidOnChain",
+    "acceptBidOnChain",
+    "withdrawBidAcceptanceOnChain",
+    "rejectBidOnChain",
+    "furnisherStartsWorkOnChain",
+    "furnisherStartsWorkWithPlatformAuthorizationOnChain",
+    "seekerRaisesDisputeOnChain",
+    "furnisherRaisesDisputeOnChain",
+    "furnisherSubmitsWorkOnChain",
+    "seekerApprovesWorkOnChain",
+    "resolveDisputeOnChain"
   ]
 }

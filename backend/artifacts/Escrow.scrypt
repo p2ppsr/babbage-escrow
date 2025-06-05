@@ -104,7 +104,7 @@ contract EscrowContract {
       }
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + amount)));
   }
-  public function seekerExtendsWorkDeadline(Sig seekerSig, int extension, SigHashPreimage __scrypt_ts_txPreimage) {
+  public function seekerExtendsWorkDeadlineOnChain(Sig seekerSig, int extension, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -121,7 +121,11 @@ contract EscrowContract {
     require(checkSig(seekerSig, this.seekerKey));
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
   }
-  public function furnisherPlacesBid(Sig furnisherSig, Bid bid, int index, SigHashPreimage __scrypt_ts_txPreimage) {
+  function seekerExtendsWorkDeadline(Sig seekerSig, int extension) : bool {
+    this.workCompletionDeadline += extension;
+    return true;
+  }
+  public function furnisherPlacesBidOnChain(Sig furnisherSig, Bid bid, int index, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -161,7 +165,11 @@ contract EscrowContract {
     this.bids[(index)] = bid;
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
   }
-  public function acceptBid(int mode, Sig sig, int index, SigHashPreimage __scrypt_ts_txPreimage) {
+  function furnisherPlacesBid(Sig furnisherSig, Bid bid, int index) : bool {
+    this.bids[(index)] = bid;
+    return true;
+  }
+  public function acceptBidOnChain(int mode, Sig sig, int index, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -193,7 +201,18 @@ contract EscrowContract {
       }
     require(true);
   }
-  public function withdrawBidAcceptance(Sig sig, int index, SigHashPreimage __scrypt_ts_txPreimage) {
+  function acceptBid(int mode, Sig sig, int index) : bool {
+    Bid bid = this.bids[(index)];
+    if(mode == 41) {
+        this.bidAcceptedBy = 82;
+      } else {
+        this.bidAcceptedBy = 83;
+      }
+    this.status = 12;
+    this.acceptedBid = bid;
+    return true;
+  }
+  public function withdrawBidAcceptanceOnChain(Sig sig, int index, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -224,7 +243,14 @@ contract EscrowContract {
       }
     require(true);
   }
-  public function rejectBid(int mode, Sig sig, int index, SigHashPreimage __scrypt_ts_txPreimage) {
+  function withdrawBidAcceptance(Sig sig, int index) : bool {
+    this.status = 11;
+    this.acceptedBid = {this.seekerKey, b'', 0, 0, 0, 0};
+    this.bids[(index)] = {this.seekerKey, b'', 0, 0, 0, 0};
+    this.bidAcceptedBy = 81;
+    return true;
+  }
+  public function rejectBidOnChain(int mode, Sig sig, int index, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -244,7 +270,11 @@ contract EscrowContract {
     this.bids[(index)] = {this.seekerKey, b'', 0, 0, 0, 0};
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
   }
-  public function furnisherStartsWork(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function rejectBid(int mode, Sig sig, int index) : bool {
+    this.bids[(index)] = {this.seekerKey, b'', 0, 0, 0, 0};
+    return true;
+  }
+  public function furnisherStartsWorkOnChain(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -257,7 +287,11 @@ contract EscrowContract {
     this.status = 13;
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + (this.acceptedBid).bond)));
   }
-  public function furnisherStartsWorkWithPlatformAuthorization(Sig furnisherSig, Sig platformSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function furnisherStartsWork(Sig furnisherSig) : bool {
+    this.status = 13;
+    return true;
+  }
+  public function furnisherStartsWorkWithPlatformAuthorizationOnChain(Sig furnisherSig, Sig platformSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -271,7 +305,11 @@ contract EscrowContract {
     this.status = 13;
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value + (this.acceptedBid).bond)));
   }
-  public function seekerRaisesDispute(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function furnisherStartsWorkWithPlatformAuthorization(Sig furnisherSig, Sig platformSig) : bool {
+    this.status = 13;
+    return true;
+  }
+  public function seekerRaisesDisputeOnChain(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -286,7 +324,11 @@ contract EscrowContract {
     this.status = 16;
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
   }
-  public function furnisherRaisesDispute(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function seekerRaisesDispute(Sig seekerSig) : bool {
+    this.status = 16;
+    return true;
+  }
+  public function furnisherRaisesDisputeOnChain(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -299,7 +341,11 @@ contract EscrowContract {
     this.status = 17;
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
   }
-  public function furnisherSubmitsWork(Sig furnisherSig, bytes workCompletionDescription, Bid adHocBid, SigHashPreimage __scrypt_ts_txPreimage) {
+  function furnisherRaisesDispute(Sig furnisherSig) : bool {
+    this.status = 17;
+    return true;
+  }
+  public function furnisherSubmitsWorkOnChain(Sig furnisherSig, bytes workCompletionDescription, Bid adHocBid, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -327,7 +373,18 @@ contract EscrowContract {
       }
     require(true);
   }
-  public function seekerApprovesWork(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function furnisherSubmitsWork(Sig furnisherSig, bytes workCompletionDescription, Bid adHocBid) : bool {
+    this.workCompletionTime = this.__scrypt_ts_ctx_locktime;
+    this.workCompletionDescription = workCompletionDescription;
+    if(this.contractType == 1 && this.bountySolversNeedApproval == 0) {
+        this.status = 14;
+        this.acceptedBid = adHocBid;
+      } else {
+        this.status = 14;
+      }
+    return true;
+  }
+  public function seekerApprovesWorkOnChain(Sig seekerSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c3')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -338,7 +395,11 @@ contract EscrowContract {
     this.status = 15;
     require(this.__scrypt_ts_ctx_hashoutputs == hash256(this.buildStateOutput(this.__scrypt_ts_ctx_value)));
   }
-  public function furnisherClaimsPayment(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  function seekerApprovesWork(Sig seekerSig) : bool {
+    this.status = 15;
+    return true;
+  }
+  public function furnisherClaimsPaymentOnChain(Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);
@@ -347,7 +408,7 @@ contract EscrowContract {
     require(this.status == 15);
     require(checkSig(furnisherSig, (this.acceptedBid).furnisherKey));
   }
-  public function resolveDispute(int platformResolves, int amountForSeeker, int amountForFurnisher, bytes otherOutputs, Sig platformSig, Sig seekerSig, Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
+  public function resolveDisputeOnChain(int platformResolves, int amountForSeeker, int amountForFurnisher, bytes otherOutputs, Sig platformSig, Sig seekerSig, Sig furnisherSig, SigHashPreimage __scrypt_ts_txPreimage) {
     require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c1')));
     this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
     this.__scrypt_ts_ctx_locktime = SigHash.nLocktime(__scrypt_ts_txPreimage);

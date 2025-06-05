@@ -1,6 +1,8 @@
-import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver, Broadcaster } from '@bsv/sdk'
+import { WalletInterface, WalletClient, TopicBroadcaster, LookupResolver, Broadcaster, Signature, TransactionSignature, Utils, Transaction } from '@bsv/sdk'
 import type { EscrowTX, GlobalConfig } from '../constants.js'
-import { recordsFromAnswer } from '../utils.js'
+import { recordsFromAnswer, callContractMethod } from '../utils.js'
+import { PubKey, Sig, toByteString } from 'scrypt-ts'
+import { Bid } from 'src/contracts/Escrow.js'
 
 export default class Furnisher {
     private derivedPublicKey: string | null = null
@@ -43,36 +45,59 @@ export default class Furnisher {
         // Potentially filter by work type in the future
     }
 
-    async placeBid(record: EscrowTX, amount: number, plans: number[], bond: number) {
+    async placeBid(escrow: EscrowTX, amount: number, plans: string, timeRequired: number, bond: number) {
         await this.populateDerivedPublicKey()
-        // Verify state is initial
-        // Append our bid to the lisst
-        // Amount only matters when type = bid, otherwise type = bounty which is fixed.
-        // Update UTXO
-        // register with overlay
+        const bid: Bid = {
+            furnisherKey: PubKey(this.derivedPublicKey!),
+            plans: toByteString(plans, true),
+            bidAmount: BigInt(amount),
+            bond: BigInt(bond),
+            timeRequired: BigInt(timeRequired),
+            timeOfBid: BigInt(await this.getCurrentLockTime())
+        }
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'furnisherPlacesBid',
+            [this.signatory(), bid, escrow.contract.bids.findIndex(x => x.furnisherKey === escrow.contract.seekerKey)],
+            escrow.satoshis
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async startWork(record: EscrowTX) {
-        await this.populateDerivedPublicKey
-        // Verify the state is accepted-bid
-        // Verify the furnisher key is our key
-        // Increase contract amount by required bond amount or bidded bond amount if needed
-        // Register updated TX with overlay
+    async startWork(escrow: EscrowTX) {
+        await this.populateDerivedPublicKey()
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'furnisherStartsWork',
+            [this.signatory()],
+            escrow.satoshis + Number(escrow.contract.acceptedBid.bond)
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async completeWork(record: EscrowTX, workCompletionDescriptor: number[]) {
-        // Verify the state is active-work
-        // Verify the furnisher key is our key
-        // State goes to submitted-work
-        // Add the work completion descriptor
-        // Optionally, snnd a message to the seeker notifying them
-        // Update the UTXO on the overlay
+    async completeWork(escrow: EscrowTX, workCompletionDescriptor: string) {
+        await this.populateDerivedPublicKey()
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'furnisherSubmitsWork',
+            [this.signatory(), toByteString(workCompletionDescriptor)],
+            escrow.satoshis
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
-    async claimBounty (entity: EscrowTX) {
-         // Verify the state is resolved
-        // Verify the furnisher key is our key
-        // spend the UTXO into our balance
+    async claimBounty (escrow: EscrowTX) {
+        await this.populateDerivedPublicKey()
+        const { tx } = await callContractMethod(
+            this.wallet,
+            escrow,
+            'furnisherClaimsPayment',
+            [this.signatory()]
+        )
+        await this.broadcaster.broadcast(Transaction.fromAtomicBEEF(tx!))
     }
 
     async raiseDispute(record: EscrowTX) {
@@ -104,6 +129,29 @@ export default class Furnisher {
                 keyID: '1'
             })
             this.derivedPublicKey = publicKey
+        }
+    }
+
+    private signatory() {
+        return async (preimageHash: number[], scope: number): Promise<Sig> => {
+            const { signature } = await this.wallet.createSignature({
+                protocolID: this.globalConfig.keyDerivationProtocol,
+                keyID: '1',
+                counterparty: 'self',
+                data: preimageHash
+            })
+            const rawSignature = Signature.fromDER(signature)
+            const txSig = new TransactionSignature(rawSignature.r, rawSignature.s, scope)
+            return Sig(toByteString(Utils.toHex(txSig.toChecksigFormat())))
+        }
+    }
+
+    async getCurrentLockTime(): Promise<number> {
+        if (this.globalConfig.delayUnit === 'blocks') {
+            const { height } = await this.wallet.getHeight({})
+            return height
+        } else {
+            return Math.floor(Date.now() / 1000)
         }
     }
 }

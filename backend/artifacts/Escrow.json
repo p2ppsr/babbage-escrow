@@ -78,7 +78,7 @@
         },
         {
             "type": "function",
-            "name": "seekerExtendsWorkDeadline",
+            "name": "seekerExtendsWorkDeadlineOnChain",
             "index": 2,
             "params": [
                 {
@@ -97,7 +97,7 @@
         },
         {
             "type": "function",
-            "name": "furnisherPlacesBid",
+            "name": "furnisherPlacesBidOnChain",
             "index": 3,
             "params": [
                 {
@@ -120,7 +120,7 @@
         },
         {
             "type": "function",
-            "name": "acceptBid",
+            "name": "acceptBidOnChain",
             "index": 4,
             "params": [
                 {
@@ -143,7 +143,7 @@
         },
         {
             "type": "function",
-            "name": "withdrawBidAcceptance",
+            "name": "withdrawBidAcceptanceOnChain",
             "index": 5,
             "params": [
                 {
@@ -162,7 +162,7 @@
         },
         {
             "type": "function",
-            "name": "rejectBid",
+            "name": "rejectBidOnChain",
             "index": 6,
             "params": [
                 {
@@ -185,7 +185,7 @@
         },
         {
             "type": "function",
-            "name": "furnisherStartsWork",
+            "name": "furnisherStartsWorkOnChain",
             "index": 7,
             "params": [
                 {
@@ -200,7 +200,7 @@
         },
         {
             "type": "function",
-            "name": "furnisherStartsWorkWithPlatformAuthorization",
+            "name": "furnisherStartsWorkWithPlatformAuthorizationOnChain",
             "index": 8,
             "params": [
                 {
@@ -219,7 +219,7 @@
         },
         {
             "type": "function",
-            "name": "seekerRaisesDispute",
+            "name": "seekerRaisesDisputeOnChain",
             "index": 9,
             "params": [
                 {
@@ -234,7 +234,7 @@
         },
         {
             "type": "function",
-            "name": "furnisherRaisesDispute",
+            "name": "furnisherRaisesDisputeOnChain",
             "index": 10,
             "params": [
                 {
@@ -249,7 +249,7 @@
         },
         {
             "type": "function",
-            "name": "furnisherSubmitsWork",
+            "name": "furnisherSubmitsWorkOnChain",
             "index": 11,
             "params": [
                 {
@@ -272,7 +272,7 @@
         },
         {
             "type": "function",
-            "name": "seekerApprovesWork",
+            "name": "seekerApprovesWorkOnChain",
             "index": 12,
             "params": [
                 {
@@ -287,7 +287,7 @@
         },
         {
             "type": "function",
-            "name": "furnisherClaimsPayment",
+            "name": "furnisherClaimsPaymentOnChain",
             "index": 13,
             "params": [
                 {
@@ -302,7 +302,7 @@
         },
         {
             "type": "function",
-            "name": "resolveDispute",
+            "name": "resolveDisputeOnChain",
             "index": 14,
             "params": [
                 {
