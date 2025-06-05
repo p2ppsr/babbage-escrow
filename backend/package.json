@@ -1,7 +1,6 @@
 {
   "name": "babbage-escrow",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "General escrow contracts, entities, and overlays for Metanet and BSV applications",
   "module": "dist/esm/mod.js",
