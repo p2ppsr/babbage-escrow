@@ -4,7 +4,7 @@
   "private": true,
   "license": "Open BSV License",
   "dependencies": {
-    "babbage-escrow": "file:../backend",
+    "@babbage/escrow": "file:../backend",
     "@bsv/sdk": "^1.5.0",
     "@emotion/react": "^11.13.0",
     "@emotion/styled": "^11.13.0",

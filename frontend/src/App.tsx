@@ -1,6 +1,6 @@
 import React, { FormEvent } from 'react'
-import { Seeker } from 'babbage-escrow'
-import type { GlobalConfig } from 'babbage-escrow'
+import { Seeker } from '@babbage/escrow'
+import type { GlobalConfig } from '@babbage/escrow'
 import { WalletClient } from '@bsv/sdk'
 
 const config: GlobalConfig = {
