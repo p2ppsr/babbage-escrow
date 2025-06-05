@@ -1,5 +1,5 @@
 {
-  "name": "babbage-escrow",
+  "name": "@babbage/escrow",
   "version": "0.1.0",
   "type": "module",
   "description": "General escrow contracts, entities, and overlays for Metanet and BSV applications",
